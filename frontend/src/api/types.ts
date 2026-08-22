@@ -9,8 +9,6 @@ export interface SignupResponse {
 
 export interface LoginResponse {
   user_id: number;
-  email: string;
-  name: string;
   token: string;
 }
 
@@ -81,12 +79,4 @@ export interface Budget {
   };
   avg_cost_per_day: number;
   days: number;
-}
-
-export interface StopWithActivities {
-  id: number;
-  city_id: number;
-  start_date: string;
-  end_date: string;
-  activity_ids: number[];
 }

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   Check,
   MapPin,
@@ -11,11 +13,22 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { TripPicker } from "@/components/TripPicker";
-import { getMyTrips } from "@/api/tripsApi";
-import { searchCities } from "@/api/citiesApi";
-import { searchActivities, addActivityToStop, removeActivityFromStop } from "@/api/activitiesApi";
-import { addStop, removeStop, getStops } from "@/api/stopsApi";
-import type { TripListItem, City, Activity } from "@/api/types";
+import { CityMap } from "@/components/CityMap";
+import { loadTrips } from "@/lib/tripStore";
+import {
+  activityById,
+  inr,
+  loadStops,
+  newStopId,
+  saveStops,
+  stopCost,
+  stopNights,
+  tripBudget,
+  type StoredStop,
+} from "@/lib/itineraryStore";
+import { fakeCities } from "@/data/fakeCities";
+import { fakeActivities } from "@/data/fakeActivities";
+import type { TripListItem } from "@/api/types";
 
 export const Route = createFileRoute("/itinerary-builder")({
   head: () => ({
@@ -26,146 +39,52 @@ export const Route = createFileRoute("/itinerary-builder")({
         content:
           "Build your day-wise plan: add stops, pick cities and dates, assign activities and reorder the route.",
       },
+      { property: "og:title", content: "Itinerary Builder — GlobeTrotter" },
+      {
+        property: "og:description",
+        content:
+          "Add stops, set city dates, assign activities and reorder your multi-city route.",
+      },
     ],
   }),
   component: BuilderPage,
 });
 
-interface StopVM {
-  id: number;
-  city: City;
-  start_date: string;
-  end_date: string;
-  activity_ids: number[];
-}
-
-const inr = (n: number) => `\u20b9${n.toLocaleString("en-IN")}`;
-
 function BuilderPage() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [tripId, setTripId] = useState<number | null>(null);
-  const [stops, setStops] = useState<StopVM[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [activitiesByCity, setActivitiesByCity] = useState<Record<number, Activity[]>>({});
-  const [activityCache, setActivityCache] = useState<Record<number, Activity>>({});
-  const [loading, setLoading] = useState(false);
+  const [stops, setStops] = useState<StoredStop[]>([]);
 
-  const [cityId, setCityId] = useState<number | null>(null);
+  const [cityId, setCityId] = useState<number>(fakeCities[0]!.id);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [tripsRes, citiesRes] = await Promise.all([
-          getMyTrips(),
-          searchCities(""),
-        ]);
-        setTrips(tripsRes.data);
-        setCities(citiesRes.data);
-        if (tripsRes.data.length) setTripId(tripsRes.data[0]!.id);
-        if (citiesRes.data.length) setCityId(citiesRes.data[0]!.id);
-      } catch (err) {
-        toast.error("Could not load trips or cities");
-      }
-    })();
+    const list = loadTrips();
+    setTrips(list);
+    if (list.length) setTripId(list[0]!.id);
   }, []);
-
-  const fetchActivitiesForCity = useCallback(
-    async (id: number) => {
-      if (activitiesByCity[id]) return activitiesByCity[id];
-      const res = await searchActivities({ city_id: id });
-      setActivitiesByCity((prev) => ({ ...prev, [id]: res.data }));
-      setActivityCache((prev) => {
-        const next = { ...prev };
-        res.data.forEach((a) => (next[a.id] = a));
-        return next;
-      });
-      return res.data;
-    },
-    [activitiesByCity],
-  );
 
   useEffect(() => {
     if (tripId == null) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await getStops(tripId);
-        const withCity: StopVM[] = res.data.map((s) => {
-          const city = cities.find((c) => c.id === s.city_id) ?? {
-            id: s.city_id,
-            name: "Unknown",
-            country: "",
-            cost_index: 0,
-            popularity: 0,
-          };
-          return {
-            id: s.id,
-            city,
-            start_date: s.start_date,
-            end_date: s.end_date,
-            activity_ids: s.activity_ids,
-          };
-        });
-        setStops(withCity);
-        withCity.forEach((s) => fetchActivitiesForCity(s.city.id));
-      } catch (err) {
-        toast.error("Could not load stops for this trip");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [tripId, cities]);
-
-  const trip = trips.find((t) => t.id === tripId) ?? null;
-
-  useEffect(() => {
+    setStops(loadStops(tripId));
+    const trip = trips.find((t) => t.id === tripId);
     if (trip) {
       setStart(trip.start_date);
       setEnd(trip.start_date);
     }
-  }, [trip]);
+  }, [tripId, trips]);
 
-  useEffect(() => {
-    if (cityId != null) fetchActivitiesForCity(cityId);
-  }, [cityId, fetchActivitiesForCity]);
+  const trip = trips.find((t) => t.id === tripId) ?? null;
+  const budget = useMemo(() => tripBudget(stops), [stops]);
 
-  const budget = useMemo(() => {
-    let activitiesTotal = 0;
-    stops.forEach((s) => {
-      s.activity_ids.forEach((id) => {
-        const a = activityCache[id];
-        if (a) activitiesTotal += a.cost;
-      });
-    });
-    const days =
-      trip && trip.start_date && trip.end_date
-        ? Math.max(
-            1,
-            Math.round(
-              (new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) /
-                86400000,
-            ) + 1,
-          )
-        : 1;
-    const stay = 1500 * days;
-    const transport = 500 * days;
-    const meals = 600 * days;
-    const total = activitiesTotal + stay + transport + meals;
-    return {
-      total,
-      days,
-      avgPerDay: Math.round(total / days),
-      activities: activitiesTotal,
-      stay,
-      transport,
-      meals,
-    };
-  }, [stops, activityCache, trip]);
+  function persist(next: StoredStop[]) {
+    setStops(next);
+    if (tripId != null) saveStops(tripId, next);
+  }
 
-  async function handleAddStop() {
-    if (tripId == null || cityId == null) return;
+  function handleAddStop() {
+    if (tripId == null) return;
     if (!start || !end) {
       toast.error("Pick the arrival and departure dates");
       return;
@@ -174,56 +93,50 @@ function BuilderPage() {
       toast.error("Departure must be on or after arrival");
       return;
     }
-    try {
-      const res = await addStop(tripId, { city_id: cityId, start_date: start, end_date: end });
-      const city = cities.find((c) => c.id === cityId)!;
-      setStops((prev) => [
-        ...prev,
-        { id: res.data.id, city, start_date: start, end_date: end, activity_ids: [] },
-      ]);
-      toast.success(`${city.name} added to the route`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add stop");
-    }
+    const city = fakeCities.find((c) => c.id === cityId)!;
+    persist([
+      ...stops,
+      {
+        id: newStopId(),
+        city,
+        start_date: start,
+        end_date: end,
+        activity_ids: [],
+      },
+    ]);
+    toast.success(`${city.name} added to the route`);
   }
 
-  async function handleRemoveStop(stopId: number) {
-    if (tripId == null) return;
-    try {
-      await removeStop(tripId, stopId);
-      setStops((prev) => prev.filter((s) => s.id !== stopId));
-      toast.success("Stop removed");
-    } catch (err) {
-      toast.error("Could not remove stop");
-    }
+  function move(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= stops.length) return;
+    const next = [...stops];
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item!);
+    persist(next);
   }
 
-  async function toggleActivity(stopId: number, activityId: number) {
-    if (tripId == null) return;
-    const stop = stops.find((s) => s.id === stopId);
-    if (!stop) return;
-    const isOn = stop.activity_ids.includes(activityId);
-    try {
-      if (isOn) {
-        await removeActivityFromStop(tripId, stopId, activityId);
-      } else {
-        await addActivityToStop(tripId, stopId, activityId);
-      }
-      setStops((prev) =>
-        prev.map((s) =>
-          s.id === stopId
-            ? {
-                ...s,
-                activity_ids: isOn
-                  ? s.activity_ids.filter((a) => a !== activityId)
-                  : [...s.activity_ids, activityId],
-              }
-            : s,
-        ),
-      );
-    } catch (err) {
-      toast.error("Could not update activity");
-    }
+  function removeStop(id: string) {
+    persist(stops.filter((s) => s.id !== id));
+  }
+
+  function toggleActivity(stopId: string, activityId: number) {
+    persist(
+      stops.map((s) =>
+        s.id === stopId
+          ? {
+              ...s,
+              activity_ids: s.activity_ids.includes(activityId)
+                ? s.activity_ids.filter((a) => a !== activityId)
+                : [...s.activity_ids, activityId],
+            }
+          : s,
+      ),
+    );
+  }
+
+  function updateDates(stopId: string, patch: Partial<StoredStop>) {
+    persist(stops.map((s) => (s.id === stopId ? { ...s, ...patch } : s)));
   }
 
   const fieldClass =
@@ -242,8 +155,20 @@ function BuilderPage() {
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
           Add a stop for every city, set the dates you'll be there, tick the
-          activities you want.
+          activities you want and drag the order around until it flows.
         </p>
+
+        <div className="mt-8">
+          <CityMap
+            cities={fakeCities}
+            selectedId={cityId}
+            onSelect={(city) => {
+              setCityId(city.id);
+              toast.success(`${city.name} selected — set the dates and add it`);
+            }}
+            routeIds={stops.map((s) => s.city.id)}
+          />
+        </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
@@ -262,11 +187,11 @@ function BuilderPage() {
                     </label>
                     <select
                       id="stop-city"
-                      value={cityId ?? ""}
+                      value={cityId}
                       onChange={(e) => setCityId(Number(e.target.value))}
                       className={fieldClass}
                     >
-                      {cities.map((c) => (
+                      {fakeCities.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}, {c.country}
                         </option>
@@ -310,6 +235,12 @@ function BuilderPage() {
                     <Plus className="size-4" />
                     Add stop
                   </button>
+                  <Link
+                    to="/cities"
+                    className="block text-center text-xs font-semibold text-primary hover:underline"
+                  >
+                    Browse all cities & budget →
+                  </Link>
                 </div>
               </section>
             ) : null}
@@ -344,13 +275,7 @@ function BuilderPage() {
           </aside>
 
           <section className="space-y-4">
-            {loading ? (
-              <div className="rounded-3xl border border-dashed border-border bg-card p-12 text-center">
-                <p className="text-sm text-muted-foreground">Loading stops…</p>
-              </div>
-            ) : null}
-
-            {!loading && stops.length === 0 ? (
+            {stops.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-border bg-card p-12 text-center">
                 <MapPin className="mx-auto size-8 text-muted-foreground" />
                 <p className="mt-3 font-display text-lg font-bold">
@@ -362,89 +287,141 @@ function BuilderPage() {
               </div>
             ) : null}
 
-            {stops.map((stop, index) => {
-              const cityActivities = activitiesByCity[stop.city.id] ?? [];
-              return (
-                <article
-                  key={stop.id}
-                  className="rounded-3xl border border-border bg-card p-5 shadow-lift transition hover:border-primary/40"
-                >
-                  <header className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="gradient-sunset flex size-10 items-center justify-center rounded-2xl font-display text-sm font-bold text-primary-foreground">
-                        {index + 1}
-                      </span>
-                      <div>
-                        <h3 className="font-display text-xl font-bold">
-                          {stop.city.name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          {stop.city.country}
-                        </p>
-                      </div>
+            {stops.map((stop, index) => (
+              <article
+                key={stop.id}
+                className="rounded-3xl border border-border bg-card p-5 shadow-lift transition hover:border-primary/40"
+              >
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="gradient-sunset flex size-10 items-center justify-center rounded-2xl font-display text-sm font-bold text-primary-foreground">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <h3 className="font-display text-xl font-bold">
+                        {stop.city.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {stop.city.country} · {stopNights(stop)} days ·{" "}
+                        {inr(stopCost(stop))} activities
+                      </p>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => handleRemoveStop(stop.id)}
+                      onClick={() => move(index, -1)}
+                      aria-label={`Move ${stop.city.name} earlier`}
+                      disabled={index === 0}
+                      className="rounded-full border border-border p-2 transition hover:bg-secondary disabled:opacity-40"
+                    >
+                      <ArrowUp className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => move(index, 1)}
+                      aria-label={`Move ${stop.city.name} later`}
+                      disabled={index === stops.length - 1}
+                      className="rounded-full border border-border p-2 transition hover:bg-secondary disabled:opacity-40"
+                    >
+                      <ArrowDown className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => removeStop(stop.id)}
                       aria-label={`Remove ${stop.city.name}`}
                       className="rounded-full border border-border p-2 text-destructive transition hover:bg-destructive/10"
                     >
                       <Trash2 className="size-4" />
                     </button>
-                  </header>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold">
-                        <CalendarDays className="mr-1 inline size-3.5 text-primary" />
-                        Arrive
-                      </label>
-                      <p className="text-sm">{stop.start_date}</p>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold">
-                        <CalendarDays className="mr-1 inline size-3.5 text-primary" />
-                        Depart
-                      </label>
-                      <p className="text-sm">{stop.end_date}</p>
-                    </div>
                   </div>
+                </header>
 
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Activities
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {cityActivities.map((a) => {
-                        const on = stop.activity_ids.includes(a.id);
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor={`${stop.id}-start`}
+                      className="text-xs font-semibold"
+                    >
+                      <CalendarDays className="mr-1 inline size-3.5 text-primary" />
+                      Arrive
+                    </label>
+                    <input
+                      id={`${stop.id}-start`}
+                      type="date"
+                      value={stop.start_date}
+                      onChange={(e) =>
+                        updateDates(stop.id, { start_date: e.target.value })
+                      }
+                      className={fieldClass}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor={`${stop.id}-end`}
+                      className="text-xs font-semibold"
+                    >
+                      <CalendarDays className="mr-1 inline size-3.5 text-primary" />
+                      Depart
+                    </label>
+                    <input
+                      id={`${stop.id}-end`}
+                      type="date"
+                      value={stop.end_date}
+                      min={stop.start_date}
+                      onChange={(e) =>
+                        updateDates(stop.id, { end_date: e.target.value })
+                      }
+                      className={fieldClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Activities
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {fakeActivities.map((a) => {
+                      const on = stop.activity_ids.includes(a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => toggleActivity(stop.id, a.id)}
+                          aria-pressed={on}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                            on
+                              ? "gradient-sunset border-transparent text-primary-foreground"
+                              : "border-border hover:bg-secondary"
+                          }`}
+                        >
+                          {on ? <Check className="size-3.5" /> : null}
+                          {a.name}
+                          <span className="opacity-70">
+                            {a.cost ? inr(a.cost) : "Free"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {stop.activity_ids.length ? (
+                    <ul className="mt-4 space-y-1.5 text-sm text-muted-foreground">
+                      {stop.activity_ids.map((id) => {
+                        const a = activityById(id);
+                        if (!a) return null;
                         return (
-                          <button
-                            key={a.id}
-                            onClick={() => toggleActivity(stop.id, a.id)}
-                            aria-pressed={on}
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                              on
-                                ? "gradient-sunset border-transparent text-primary-foreground"
-                                : "border-border hover:bg-secondary"
-                            }`}
-                          >
-                            {on ? <Check className="size-3.5" /> : null}
-                            {a.name}
-                            <span className="opacity-70">
+                          <li key={id} className="flex justify-between">
+                            <span>
+                              {a.name} · {a.duration_hours}h
+                            </span>
+                            <span className="font-semibold text-foreground">
                               {a.cost ? inr(a.cost) : "Free"}
                             </span>
-                          </button>
+                          </li>
                         );
                       })}
-                      {cityActivities.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          No activities found for this city.
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                    </ul>
+                  ) : null}
+                </div>
+              </article>
+            ))}
 
             {stops.length ? (
               <Link

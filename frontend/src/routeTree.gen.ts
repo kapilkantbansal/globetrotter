@@ -16,6 +16,7 @@ import { Route as CreateTripRouteImport } from './routes/create-trip'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ItineraryRouteImport } from './routes/itinerary'
 import { Route as ItineraryBuilderRouteImport } from './routes/itinerary-builder'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TripsRouteImport } from './routes/trips'
 
@@ -54,6 +55,11 @@ const ItineraryBuilderRoute = ItineraryBuilderRouteImport.update({
   path: '/itinerary-builder',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/itinerary': typeof ItineraryRoute
   '/itinerary-builder': typeof ItineraryBuilderRoute
+  '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
   '/trips': typeof TripsRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/itinerary': typeof ItineraryRoute
   '/itinerary-builder': typeof ItineraryBuilderRoute
+  '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
   '/trips': typeof TripsRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/itinerary': typeof ItineraryRoute
   '/itinerary-builder': typeof ItineraryBuilderRoute
+  '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
   '/trips': typeof TripsRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/itinerary'
     | '/itinerary-builder'
+    | '/profile'
     | '/signup'
     | '/trips'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/itinerary'
     | '/itinerary-builder'
+    | '/profile'
     | '/signup'
     | '/trips'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/itinerary'
     | '/itinerary-builder'
+    | '/profile'
     | '/signup'
     | '/trips'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   ItineraryRoute: typeof ItineraryRoute
   ItineraryBuilderRoute: typeof ItineraryBuilderRoute
+  ProfileRoute: typeof ProfileRoute
   SignupRoute: typeof SignupRoute
   TripsRoute: typeof TripsRoute
 }
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItineraryBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   ItineraryRoute: ItineraryRoute,
   ItineraryBuilderRoute: ItineraryBuilderRoute,
+  ProfileRoute: ProfileRoute,
   SignupRoute: SignupRoute,
   TripsRoute: TripsRoute,
 }
