@@ -116,44 +116,76 @@
     oklch(0.24 0.05 250 / 0.05),
     oklch(0.2 0.06 260 / 0.75)
   );
+  --map-ocean: oklch(0.93 0.03 210);
+  --map-land: oklch(0.9 0.04 120);
+  --map-coast: oklch(0.75 0.05 130);
+  --map-grid: oklch(0.3 0.02 250 / 0.08);
+  --map-pin: oklch(0.55 0.08 200);
+  --map-pin-active: oklch(0.66 0.19 40);
+  --map-pin-ring: oklch(1 0 0);
+  --map-pulse: oklch(0.66 0.19 40 / 0.3);
+  --map-route: oklch(0.66 0.19 40);
+  --map-label: oklch(0.24 0.035 45);
   --shadow-lift: 0 18px 45px -22px oklch(0.35 0.08 55 / 0.55);
   --shadow-glow: 0 0 0 1px oklch(1 0 0 / 0.18), 0 20px 60px -25px oklch(0.2 0.05 250 / 0.7);
 }
 
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: oklch(0.19 0.026 265);
+  --foreground: oklch(0.96 0.012 85);
+  --card: oklch(0.235 0.03 265);
+  --card-foreground: oklch(0.96 0.012 85);
+  --popover: oklch(0.235 0.03 265);
+  --popover-foreground: oklch(0.96 0.012 85);
+  --primary: oklch(0.74 0.16 55);
+  --primary-foreground: oklch(0.2 0.04 45);
+  --secondary: oklch(0.28 0.03 262);
+  --secondary-foreground: oklch(0.95 0.012 85);
+  --muted: oklch(0.28 0.03 262);
+  --muted-foreground: oklch(0.72 0.025 80);
+  --accent: oklch(0.66 0.1 200);
+  --accent-foreground: oklch(0.16 0.03 250);
+  --destructive: oklch(0.68 0.19 22);
+  --destructive-foreground: oklch(0.98 0.003 248);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.74 0.16 55);
+  --sand: oklch(0.28 0.03 262);
+  --ocean: oklch(0.66 0.1 200);
+  --ocean-foreground: oklch(0.16 0.03 250);
+  --sunset: oklch(0.74 0.16 45);
+  --chart-1: oklch(0.74 0.16 55);
+  --chart-2: oklch(0.66 0.1 200);
+  --chart-3: oklch(0.7 0.14 150);
+  --chart-4: oklch(0.8 0.16 85);
+  --chart-5: oklch(0.68 0.18 15);
+  --sidebar: oklch(0.235 0.03 265);
+  --sidebar-foreground: oklch(0.96 0.012 85);
+  --sidebar-primary: oklch(0.74 0.16 55);
+  --sidebar-primary-foreground: oklch(0.2 0.04 45);
+  --sidebar-accent: oklch(0.28 0.03 262);
+  --sidebar-accent-foreground: oklch(0.96 0.012 85);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.74 0.16 55);
+
+  --gradient-sunset: linear-gradient(
+    135deg,
+    oklch(0.78 0.15 70),
+    oklch(0.66 0.19 30)
+  );
+  --shadow-lift: 0 18px 45px -22px oklch(0 0 0 / 0.75);
+
+  --map-ocean: oklch(0.24 0.04 250);
+  --map-land: oklch(0.33 0.035 200);
+  --map-coast: oklch(0.45 0.05 200);
+  --map-grid: oklch(1 0 0 / 0.06);
+  --map-pin: oklch(0.72 0.09 200);
+  --map-pin-active: oklch(0.76 0.17 55);
+  --map-pin-ring: oklch(0.22 0.03 250);
+  --map-pulse: oklch(0.76 0.17 55 / 0.35);
+  --map-route: oklch(0.76 0.17 55);
+  --map-label: oklch(0.95 0.01 85);
 }
 
 @layer base {
@@ -246,3 +278,25 @@
   transition: transform 0.7s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
+
+
+@keyframes ping-slow {
+  0% {
+    transform-origin: center;
+    opacity: 0.75;
+  }
+  70%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+html {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}

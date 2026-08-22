@@ -11,9 +11,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
+import { TripCalendar } from "@/components/TripCalendar";
 import { USE_FAKE_DATA } from "@/config";
 import { getMyTrips, deleteTrip } from "@/api/tripsApi";
 import { loadTrips, saveTrips, tripDays } from "@/lib/tripStore";
+import { loadStops } from "@/lib/itineraryStore";
 import type { TripListItem } from "@/api/types";
 
 export const Route = createFileRoute("/trips")({
@@ -55,15 +57,21 @@ function TripsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [sort, setSort] = useState<Sort>("date");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState("");
 
   useEffect(() => {
     if (USE_FAKE_DATA) {
-      setTrips(loadTrips());
+      const list = loadTrips();
+      setTrips(list);
+      if (list.length) setSelectedId(list[0]!.id);
       return;
     }
     getMyTrips()
-      .then((res) => setTrips(res.data))
+      .then((res) => {
+        setTrips(res.data);
+        if (res.data.length) setSelectedId(res.data[0]!.id);
+      })
       .catch((err: Error) => toast.error(err.message));
   }, []);
 
@@ -122,6 +130,15 @@ function TripsPage() {
   }
 
   const totalStops = trips.reduce((sum, t) => sum + t.stop_count, 0);
+
+  const selectedTrip = trips.find((t) => t.id === selectedId) ?? null;
+  const selectedStops = useMemo(
+    () =>
+      selectedId == null
+        ? []
+        : loadStops(selectedId).map((s2) => s2.city.name),
+    [selectedId, trips],
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -190,6 +207,80 @@ function TripsPage() {
           </select>
         </section>
 
+        <section className="mt-8 grid items-start gap-6 lg:grid-cols-2">
+          <div className="rounded-3xl border border-border bg-card p-6">
+            <h2 className="font-display text-xl font-bold">Trip calendar</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pick a trip to see its dates on the calendar and watch the drive
+              from your first stop to the final destination.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {trips.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedId(t.id)}
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    selectedId === t.id
+                      ? "gradient-sunset border-transparent text-primary-foreground shadow-lift"
+                      : "border-border hover:bg-secondary"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+              {trips.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No trips yet — create one to fill the calendar.
+                </p>
+              ) : null}
+            </div>
+
+            {selectedTrip ? (
+              <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {(
+                  [
+                    ["Start", selectedTrip.start_date],
+                    ["End", selectedTrip.end_date],
+                    ["Days", String(tripDays(selectedTrip))],
+                    ["Stops", String(selectedTrip.stop_count)],
+                  ] as const
+                ).map(([label, value]) => (
+                  <div key={label} className="rounded-2xl bg-secondary/60 p-3">
+                    <dt className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
+                      {label}
+                    </dt>
+                    <dd className="mt-1 text-sm font-semibold">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+
+            {selectedStops.length === 0 && selectedTrip ? (
+              <p className="mt-6 rounded-2xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+                No stops saved for this trip yet.{" "}
+                <Link to="/itinerary-builder" className="font-semibold text-primary hover:underline">
+                  Add cities in the Builder →
+                </Link>
+              </p>
+            ) : null}
+
+            {selectedStops.length > 0 ? (
+              <ol className="mt-6 space-y-2">
+                {selectedStops.map((name, i) => (
+                  <li key={`${name}-${i}`} className="flex items-center gap-3 text-sm">
+                    <span className="gradient-sunset flex size-6 items-center justify-center rounded-full text-[0.65rem] font-bold text-primary-foreground">
+                      {i + 1}
+                    </span>
+                    {name}
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </div>
+
+          <TripCalendar trip={selectedTrip} stopNames={selectedStops} />
+        </section>
+
         <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((trip) => (
             <article
@@ -238,10 +329,20 @@ function TripsPage() {
 
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => void navigate({ to: "/activities" })}
+                  onClick={() => void navigate({ to: "/itinerary" })}
                   className="rounded-full border border-border px-4 py-2 text-xs font-bold uppercase tracking-wider transition hover:bg-secondary"
                 >
                   View
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedId(trip.id);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  aria-label={`Open calendar for ${trip.name}`}
+                  className="rounded-full border border-border p-2 transition hover:bg-secondary"
+                >
+                  <CalendarDays className="size-4" />
                 </button>
                 <button
                   onClick={() => {
