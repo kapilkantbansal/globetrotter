@@ -44,6 +44,36 @@ export interface City {
   popularity: number;
 }
 
+export interface GeoCitySearchResult {
+  id: number;
+  name: string;
+  state?: string | null;
+  country: string;
+  country_code?: string | null;
+  emoji?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  population?: number | null;
+  timezone?: string | null;
+}
+
+export interface CityDetail {
+  id?: number | null;
+  name: string;
+  state?: string | null;
+  country: string;
+  country_code?: string | null;
+  emoji?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  population?: number | null;
+  timezone?: string | null;
+  cost_index: number;
+  popularity: number;
+  image_url?: string | null;
+  description?: string | null;
+}
+
 export interface Activity {
   id: number;
   name: string;

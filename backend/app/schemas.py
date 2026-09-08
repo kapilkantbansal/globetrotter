@@ -85,6 +85,36 @@ class CityOut(BaseModel):
         from_attributes = True
 
 
+class GeoCityOut(BaseModel):
+    id: int
+    name: str
+    state: Optional[str] = None
+    country: str
+    country_code: Optional[str] = None
+    emoji: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    population: Optional[int] = None
+    timezone: Optional[str] = None
+
+
+class CityDetailOut(BaseModel):
+    id: Optional[int] = None
+    name: str
+    state: Optional[str] = None
+    country: str
+    country_code: Optional[str] = None
+    emoji: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    population: Optional[int] = None
+    timezone: Optional[str] = None
+    cost_index: int = 5
+    popularity: int = 5
+    image_url: Optional[str] = None
+    description: Optional[str] = None
+
+
 # ---------- Activity ----------
 class ActivityOut(BaseModel):
     id: int

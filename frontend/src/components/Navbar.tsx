@@ -5,9 +5,9 @@ import { useAuth } from "@/context/AuthContext";
 
 const NAV_LINKS = [
   { to: "/trips", label: "My Trips" },
+  { to: "/cities", label: "Cities" },
   { to: "/itinerary-builder", label: "Builder" },
   { to: "/itinerary", label: "Itinerary" },
-  { to: "/cities", label: "Cities & Budget" },
   { to: "/activities", label: "Activities" },
   { to: "/profile", label: "Profile" },
 ] as const;

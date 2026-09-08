@@ -92,7 +92,11 @@ function TripsPage() {
     });
     return [...list].sort((a, b) => {
       if (sort === "name") return a.name.localeCompare(b.name);
-      if (sort === "stops") return b.stop_count - a.stop_count;
+      if (sort === "stops") {
+        const aCount = Math.max(a.stop_count, loadStops(a.id).length);
+        const bCount = Math.max(b.stop_count, loadStops(b.id).length);
+        return bCount - aCount;
+      }
       return a.start_date.localeCompare(b.start_date);
     });
   }, [trips, query, filter, sort, today]);
@@ -129,7 +133,10 @@ function TripsPage() {
     toast.success("Trip renamed");
   }
 
-  const totalStops = trips.reduce((sum, t) => sum + t.stop_count, 0);
+  const totalStops = trips.reduce(
+    (sum, t) => sum + Math.max(t.stop_count, loadStops(t.id).length),
+    0
+  );
 
   const activeTrip =
     visible.find((t) => t.id === selectedId) ?? visible[0] ?? null;
@@ -139,8 +146,11 @@ function TripsPage() {
       activeTrip == null
         ? []
         : loadStops(activeTrip.id).map((s2) => s2.city.name),
-    [activeTrip],
+    [activeTrip]
   );
+  const activeStopCount = activeTrip
+    ? Math.max(activeTrip.stop_count, selectedStops.length)
+    : 0;
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -321,8 +331,8 @@ function TripsPage() {
                     </p>
                     <p className="mt-1 flex items-center gap-2 text-sm text-gray-400">
                       <MapPin className="size-4 shrink-0 text-accent" />
-                      {activeTrip.stop_count}{" "}
-                      {activeTrip.stop_count === 1 ? "destination" : "destinations"}
+                      {activeStopCount}{" "}
+                      {activeStopCount === 1 ? "destination" : "destinations"}
                     </p>
 
                     <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -331,7 +341,7 @@ function TripsPage() {
                           ["Start", activeTrip.start_date],
                           ["End", activeTrip.end_date],
                           ["Days", String(tripDays(activeTrip))],
-                          ["Stops", String(activeTrip.stop_count)],
+                          ["Stops", String(activeStopCount)],
                         ] as const
                       ).map(([label, value]) => (
                         <div key={label} className="rounded-xl bg-secondary/50 border border-white/5 p-3">
@@ -345,9 +355,9 @@ function TripsPage() {
 
                     {selectedStops.length === 0 ? (
                       <p className="mt-5 rounded-xl border border-dashed border-border/60 p-4 text-xs text-muted-foreground">
-                        No stops saved for this trip yet.{" "}
-                        <Link to="/itinerary-builder" className="font-semibold text-primary hover:underline">
-                          Add cities in the Builder →
+                        No destinations added for this trip yet.{" "}
+                        <Link to="/cities" className="font-semibold text-primary hover:underline">
+                          Add destinations in Cities →
                         </Link>
                       </p>
                     ) : (
