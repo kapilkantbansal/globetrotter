@@ -66,16 +66,16 @@ export interface BannerSlide {
 
 export const bannerSlides: BannerSlide[] = [
   {
-    city: "Santorini",
-    country: "Greece",
-    speciality: "Whitewashed cliffside villages and the world's slowest sunsets",
-    image: santorini,
-  },
-  {
     city: "Kyoto",
     country: "Japan",
     speciality: "Vermillion torii gates threading through silent bamboo groves",
     image: kyoto,
+  },
+  {
+    city: "Santorini",
+    country: "Greece",
+    speciality: "Whitewashed cliffside villages and the world's slowest sunsets",
+    image: santorini,
   },
   {
     city: "Goa",

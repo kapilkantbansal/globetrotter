@@ -64,13 +64,13 @@ function TripsPage() {
     if (USE_FAKE_DATA) {
       const list = loadTrips();
       setTrips(list);
-      if (list.length) setSelectedId(list[0]!.id);
+      if (list.length > 0) setSelectedId(list[0].id);
       return;
     }
     getMyTrips()
       .then((res) => {
         setTrips(res.data);
-        if (res.data.length) setSelectedId(res.data[0]!.id);
+        if (res.data.length > 0) setSelectedId(res.data[0].id);
       })
       .catch((err: Error) => toast.error(err.message));
   }, []);
@@ -131,17 +131,19 @@ function TripsPage() {
 
   const totalStops = trips.reduce((sum, t) => sum + t.stop_count, 0);
 
-  const selectedTrip = trips.find((t) => t.id === selectedId) ?? null;
+  const activeTrip =
+    visible.find((t) => t.id === selectedId) ?? visible[0] ?? null;
+  const activeIndex = visible.findIndex((t) => t.id === activeTrip?.id);
   const selectedStops = useMemo(
     () =>
-      selectedId == null
+      activeTrip == null
         ? []
-        : loadStops(selectedId).map((s2) => s2.city.name),
-    [selectedId, trips],
+        : loadStops(activeTrip.id).map((s2) => s2.city.name),
+    [activeTrip],
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-transparent">
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-5 py-10">
@@ -207,185 +209,202 @@ function TripsPage() {
           </select>
         </section>
 
-        <section className="mt-8 grid items-start gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-border bg-card p-6">
-            <h2 className="font-display text-xl font-bold">Trip calendar</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Pick a trip to see its dates on the calendar and watch the drive
-              from your first stop to the final destination.
+        {visible.length === 0 ? (
+          <div className="mt-12 rounded-3xl border border-dashed border-white/15 bg-card/60 p-12 text-center backdrop-blur-md">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-secondary/80 text-muted-foreground">
+              <CalendarDays className="size-7 text-primary" />
+            </div>
+            <h3 className="mt-4 font-display text-xl font-bold text-white">
+              {filter === "past" ? "No trips completed" : "No trips found"}
+            </h3>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+              {filter === "past"
+                ? "You don't have any completed trips yet. When your trips pass their end date, they will appear here."
+                : "No trips matched your search. Start a new itinerary to get going."}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {trips.map((t) => (
+            <div className="mt-6">
+              <Link
+                to="/create-trip"
+                className="gradient-sunset inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-lift transition hover:opacity-90 active:scale-95"
+              >
+                <Plus className="size-4" /> Create a trip
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <section className="mt-8 space-y-4">
+            {/* Trip selector tabs */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">
+                Select Trip:
+              </span>
+              {visible.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setSelectedId(t.id)}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    selectedId === t.id
+                  className={`rounded-full border px-4 py-1.5 text-xs font-semibold capitalize transition ${
+                    activeTrip?.id === t.id
                       ? "gradient-sunset border-transparent text-primary-foreground shadow-lift"
-                      : "border-border hover:bg-secondary"
+                      : "border-border/70 bg-card/70 text-gray-300 hover:bg-secondary hover:text-white"
                   }`}
                 >
                   {t.name}
                 </button>
               ))}
-              {trips.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No trips yet — create one to fill the calendar.
-                </p>
-              ) : null}
             </div>
 
-            {selectedTrip ? (
-              <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {(
-                  [
-                    ["Start", selectedTrip.start_date],
-                    ["End", selectedTrip.end_date],
-                    ["Days", String(tripDays(selectedTrip))],
-                    ["Stops", String(selectedTrip.stop_count)],
-                  ] as const
-                ).map(([label, value]) => (
-                  <div key={label} className="rounded-2xl bg-secondary/60 p-3">
-                    <dt className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
-                      {label}
-                    </dt>
-                    <dd className="mt-1 text-sm font-semibold">{value}</dd>
+            <div className="grid items-start gap-6 lg:grid-cols-2">
+              {/* Left Column: Trip Box */}
+              {activeTrip && (
+                <article className="overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-2xl backdrop-blur-xl">
+                  {/* Cover image box */}
+                  <div className="relative h-56 w-full overflow-hidden bg-secondary/40">
+                    {activeTrip.cover_photo_url ? (
+                      <img
+                        src={activeTrip.cover_photo_url}
+                        alt={activeTrip.name}
+                        className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-950/40 via-blue-950/30 to-background/50">
+                        <MapPin className="size-12 text-primary/40" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
+
+                    <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider backdrop-blur-md ${
+                          activeTrip.end_date >= today
+                            ? "border border-primary/40 bg-primary/20 text-primary"
+                            : "border border-white/20 bg-black/50 text-gray-300"
+                        }`}
+                      >
+                        {activeTrip.end_date >= today ? "Upcoming" : "Past"}
+                      </span>
+                      <span className="rounded-full bg-black/60 px-2.5 py-0.5 text-[11px] font-bold text-gray-200 backdrop-blur-md">
+                        Trip #{activeIndex + 1}
+                      </span>
+                    </div>
                   </div>
-                ))}
-              </dl>
-            ) : null}
 
-            {selectedStops.length === 0 && selectedTrip ? (
-              <p className="mt-6 rounded-2xl border border-dashed border-border p-5 text-sm text-muted-foreground">
-                No stops saved for this trip yet.{" "}
-                <Link to="/itinerary-builder" className="font-semibold text-primary hover:underline">
-                  Add cities in the Builder →
-                </Link>
-              </p>
-            ) : null}
+                  {/* Trip Details */}
+                  <div className="p-6">
+                    <div className="flex items-center justify-between gap-3">
+                      {editingId === activeTrip.id ? (
+                        <input
+                          value={draftName}
+                          autoFocus
+                          onChange={(e) => setDraftName(e.target.value)}
+                          onBlur={() => saveRename(activeTrip)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveRename(activeTrip);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          aria-label="Trip name"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-1.5 font-display text-xl font-bold outline-none focus:border-primary"
+                        />
+                      ) : (
+                        <h2 className="font-display text-2xl font-bold capitalize text-white">
+                          {activeTrip.name}
+                        </h2>
+                      )}
+                    </div>
 
-            {selectedStops.length > 0 ? (
-              <ol className="mt-6 space-y-2">
-                {selectedStops.map((name, i) => (
-                  <li key={`${name}-${i}`} className="flex items-center gap-3 text-sm">
-                    <span className="gradient-sunset flex size-6 items-center justify-center rounded-full text-[0.65rem] font-bold text-primary-foreground">
-                      {i + 1}
-                    </span>
-                    {name}
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-          </div>
+                    <p className="mt-2 flex items-center gap-2 text-sm text-gray-300">
+                      <CalendarDays className="size-4 shrink-0 text-primary" />
+                      {formatRange(activeTrip.start_date, activeTrip.end_date)} · {tripDays(activeTrip)} days
+                    </p>
+                    <p className="mt-1 flex items-center gap-2 text-sm text-gray-400">
+                      <MapPin className="size-4 shrink-0 text-accent" />
+                      {activeTrip.stop_count}{" "}
+                      {activeTrip.stop_count === 1 ? "destination" : "destinations"}
+                    </p>
 
-          <TripCalendar trip={selectedTrip} stopNames={selectedStops} />
-        </section>
+                    <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {(
+                        [
+                          ["Start", activeTrip.start_date],
+                          ["End", activeTrip.end_date],
+                          ["Days", String(tripDays(activeTrip))],
+                          ["Stops", String(activeTrip.stop_count)],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label} className="rounded-xl bg-secondary/50 border border-white/5 p-3">
+                          <dt className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
+                            {label}
+                          </dt>
+                          <dd className="mt-1 text-sm font-semibold">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
 
-        <section className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((trip) => (
-            <article
-              key={trip.id}
-              className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 transition hover:-translate-y-1 hover:shadow-lift"
-            >
-              <div>
-                {editingId === trip.id ? (
-                  <input
-                    value={draftName}
-                    autoFocus
-                    onChange={(e) => setDraftName(e.target.value)}
-                    onBlur={() => saveRename(trip)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveRename(trip);
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                    aria-label="Trip name"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 font-display text-lg font-bold outline-none focus:border-primary"
-                  />
-                ) : (
-                  <h2 className="font-display text-lg font-bold">
-                    {trip.name}
-                  </h2>
-                )}
-                <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                  <CalendarDays className="size-4 text-primary" />
-                  {formatRange(trip.start_date, trip.end_date)} ·{" "}
-                  {tripDays(trip)} days
-                </p>
-                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="size-4 text-accent" />
-                  {trip.stop_count}{" "}
-                  {trip.stop_count === 1 ? "destination" : "destinations"}
-                </p>
-                <span
-                  className={`mt-3 inline-block rounded-full px-3 py-1 text-xs font-semibold ${
-                    trip.end_date >= today
-                      ? "bg-secondary text-secondary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {trip.end_date >= today ? "Upcoming" : "Completed"}
-                </span>
-              </div>
+                    {selectedStops.length === 0 ? (
+                      <p className="mt-5 rounded-xl border border-dashed border-border/60 p-4 text-xs text-muted-foreground">
+                        No stops saved for this trip yet.{" "}
+                        <Link to="/itinerary-builder" className="font-semibold text-primary hover:underline">
+                          Add cities in the Builder →
+                        </Link>
+                      </p>
+                    ) : (
+                      <ol className="mt-5 space-y-2">
+                        {selectedStops.map((name, i) => (
+                          <li key={`${name}-${i}`} className="flex items-center gap-3 text-sm">
+                            <span className="gradient-sunset flex size-6 items-center justify-center rounded-full text-[0.65rem] font-bold text-primary-foreground">
+                              {i + 1}
+                            </span>
+                            {name}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
 
-              <div className="mt-5 flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => void navigate({ to: "/itinerary" })}
-                  className="rounded-full border border-border px-4 py-2 text-xs font-bold uppercase tracking-wider transition hover:bg-secondary"
-                >
-                  View
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedId(trip.id);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  aria-label={`Open calendar for ${trip.name}`}
-                  className="rounded-full border border-border p-2 transition hover:bg-secondary"
-                >
-                  <CalendarDays className="size-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingId(trip.id);
-                    setDraftName(trip.name);
-                  }}
-                  aria-label={`Rename ${trip.name}`}
-                  className="rounded-full border border-border p-2 transition hover:bg-secondary"
-                >
-                  <Pencil className="size-4" />
-                </button>
-                <button
-                  onClick={() => handleDuplicate(trip)}
-                  aria-label={`Duplicate ${trip.name}`}
-                  className="rounded-full border border-border p-2 transition hover:bg-secondary"
-                >
-                  <Copy className="size-4" />
-                </button>
-                <button
-                  onClick={() => void handleDelete(trip)}
-                  aria-label={`Delete ${trip.name}`}
-                  className="rounded-full border border-border p-2 text-destructive transition hover:bg-destructive/10"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
+                    {/* Action buttons */}
+                    <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border/40 pt-4">
+                      <button
+                        onClick={() => void navigate({ to: "/itinerary" })}
+                        className="rounded-full border border-border px-4 py-2 text-xs font-bold uppercase tracking-wider transition hover:bg-secondary"
+                      >
+                        View Itinerary
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingId(activeTrip.id);
+                          setDraftName(activeTrip.name);
+                        }}
+                        aria-label={`Rename ${activeTrip.name}`}
+                        className="rounded-full border border-border p-2 transition hover:bg-secondary"
+                      >
+                        <Pencil className="size-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDuplicate(activeTrip)}
+                        aria-label={`Duplicate ${activeTrip.name}`}
+                        className="rounded-full border border-border p-2 transition hover:bg-secondary"
+                      >
+                        <Copy className="size-4" />
+                      </button>
+                      <button
+                        onClick={() => void handleDelete(activeTrip)}
+                        aria-label={`Delete ${activeTrip.name}`}
+                        className="rounded-full border border-border p-2 text-destructive transition hover:bg-destructive/10 ml-auto"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              )}
 
-        {visible.length === 0 ? (
-          <div className="mt-10 rounded-3xl border border-dashed border-border p-10 text-center">
-            <p className="text-muted-foreground">
-              No trips here yet. Start your first itinerary.
-            </p>
-            <Link
-              to="/create-trip"
-              className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-semibold transition hover:bg-secondary"
-            >
-              <Plus className="size-4" /> Create a trip
-            </Link>
-          </div>
-        ) : null}
+              {/* Right Column: Trip Calendar */}
+              <TripCalendar trip={activeTrip} stopNames={selectedStops} />
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

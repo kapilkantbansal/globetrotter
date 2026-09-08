@@ -18,6 +18,8 @@ export interface TripListItem {
   start_date: string; // YYYY-MM-DD
   end_date: string; // YYYY-MM-DD
   stop_count: number;
+  cover_photo_url?: string | null;
+  description?: string | null;
 }
 
 export interface TripCreateInput {
