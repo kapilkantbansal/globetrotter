@@ -352,8 +352,12 @@ function CitiesPage() {
   const [viaStops, setViaStops] = useState<{ id: string; city: CityDetail | null }[]>([]);
   const [stopCity, setStopCity] = useState<CityDetail | null>(null);
 
-  // Active showcase for inspected/clicked city
+  // Active showcase for inspected/clicked city (displayed at the very top above all things)
   const [showcaseCity, setShowcaseCity] = useState<CityDetail | null>(null);
+
+  // States for changing Start/End and inserting stops in sidebar
+  const [changingCityRole, setChangingCityRole] = useState<"start" | "end" | null>(null);
+  const [insertingStopAtIndex, setInsertingStopAtIndex] = useState<number | null>(null);
 
   // Loading states
   const [loadingStart, setLoadingStart] = useState(false);
@@ -425,6 +429,7 @@ function CitiesPage() {
       autoSyncCityToTrip(fallback, "start");
     } finally {
       setLoadingStart(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -464,6 +469,8 @@ function CitiesPage() {
       });
       setShowcaseCity(fallback);
       autoSyncCityToTrip(fallback, "via");
+    } finally {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -515,6 +522,120 @@ function CitiesPage() {
       autoSyncCityToTrip(fallback, "stop");
     } finally {
       setLoadingStop(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // Change Start City directly from sidebar
+  async function handleChangeStartCity(city: GeoCitySearchResult) {
+    if (tripId == null || !trip) return;
+    try {
+      const res = await getCityDetails(city.name, city.country, city.state ?? undefined, city.id);
+      setStartCity(res.data);
+      setShowcaseCity(res.data);
+      const currentStops = loadStops(tripId);
+      const newCityObj: City = {
+        id: res.data.id ?? Math.floor(Math.random() * 1000000) + 100,
+        name: res.data.name,
+        country: res.data.country,
+        cost_index: 5,
+        popularity: 7,
+        region: res.data.state ?? res.data.country,
+      };
+      const updated: StoredStop[] = [...currentStops];
+      if (updated.length > 0) {
+        updated[0] = { ...updated[0]!, city: newCityObj };
+      } else {
+        updated.push({
+          id: newStopId(),
+          city: newCityObj,
+          start_date: trip.start_date,
+          end_date: trip.end_date,
+          activity_ids: [],
+        });
+      }
+      setStops(updated);
+      saveStops(tripId, updated);
+      toast.success(`Start city changed to ${res.data.name}!`);
+    } catch {
+      toast.error("Failed to update start city");
+    } finally {
+      setChangingCityRole(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // Change Final Destination directly from sidebar
+  async function handleChangeEndCity(city: GeoCitySearchResult) {
+    if (tripId == null || !trip) return;
+    try {
+      const res = await getCityDetails(city.name, city.country, city.state ?? undefined, city.id);
+      setStopCity(res.data);
+      setShowcaseCity(res.data);
+      const currentStops = loadStops(tripId);
+      const newCityObj: City = {
+        id: res.data.id ?? Math.floor(Math.random() * 1000000) + 100,
+        name: res.data.name,
+        country: res.data.country,
+        cost_index: 5,
+        popularity: 7,
+        region: res.data.state ?? res.data.country,
+      };
+      const updated: StoredStop[] = [...currentStops];
+      if (updated.length > 1) {
+        updated[updated.length - 1] = { ...updated[updated.length - 1]!, city: newCityObj };
+      } else {
+        updated.push({
+          id: newStopId(),
+          city: newCityObj,
+          start_date: trip.start_date,
+          end_date: trip.end_date,
+          activity_ids: [],
+        });
+      }
+      setStops(updated);
+      saveStops(tripId, updated);
+      toast.success(`Final destination changed to ${res.data.name}!`);
+    } catch {
+      toast.error("Failed to update final destination");
+    } finally {
+      setChangingCityRole(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // Insert intermediate stop in between destinations
+  async function handleInsertStopBetween(index: number, city: GeoCitySearchResult) {
+    if (tripId == null || !trip) return;
+    try {
+      const res = await getCityDetails(city.name, city.country, city.state ?? undefined, city.id);
+      setShowcaseCity(res.data);
+      const currentStops = loadStops(tripId);
+      const newCityObj: City = {
+        id: res.data.id ?? Math.floor(Math.random() * 1000000) + 100,
+        name: res.data.name,
+        country: res.data.country,
+        cost_index: 5,
+        popularity: 7,
+        region: res.data.state ?? res.data.country,
+      };
+      const newStop: StoredStop = {
+        id: newStopId(),
+        city: newCityObj,
+        start_date: trip.start_date,
+        end_date: trip.end_date,
+        activity_ids: [],
+      };
+      const updated = [...currentStops];
+      updated.splice(index + 1, 0, newStop);
+      setStops(updated);
+      saveStops(tripId, updated);
+      toast.success(`${res.data.name} added as intermediate stop!`);
+    } catch {
+      toast.error("Failed to add stop");
+    } finally {
+      setInsertingStopAtIndex(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -639,8 +760,8 @@ function CitiesPage() {
       });
     }
 
-    // Smooth scroll to top of showcase on mobile/smaller screens
-    window.scrollTo({ top: 120, behavior: "smooth" });
+    // Scroll to the very top where showcase is displayed above all things
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // Sequence of all planned journey legs for distance
@@ -729,6 +850,37 @@ function CitiesPage() {
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
           <div className="space-y-10">
+            {/* TOP SHOWCASE: Displayed above all things when a city is inspected or clicked */}
+            {showcaseCity && (
+              <section
+                id="destination-showcase"
+                className="rounded-3xl border border-cyan-500/40 bg-card/90 p-6 shadow-2xl backdrop-blur-2xl transition-all duration-300 animate-in fade-in slide-in-from-top-4"
+              >
+                <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Eye className="size-4 text-cyan-400" />
+                    <h2 className="font-display text-base font-bold text-white">
+                      Inspected Destination Showcase: <span className="text-cyan-300">{showcaseCity.name}</span>
+                    </h2>
+                  </div>
+                  <button
+                    onClick={() => setShowcaseCity(null)}
+                    className="flex items-center gap-1.5 rounded-full border border-white/10 bg-secondary/80 px-3 py-1 text-xs text-gray-300 transition hover:bg-white/20 hover:text-white"
+                  >
+                    <X className="size-3.5" /> Close Showcase
+                  </button>
+                </div>
+                <SelectedCityCard
+                  badgeText="Inspected Destination"
+                  badgeColor="border border-cyan-500/40 bg-cyan-950/60 text-cyan-300"
+                  city={showcaseCity}
+                  onRemove={() => setShowcaseCity(null)}
+                  onAddToTrip={() => addCityToTrip(showcaseCity)}
+                  isAdded={addedCityNames.has(showcaseCity.name.toLowerCase())}
+                />
+              </section>
+            )}
+
             {/* SECTION: Sequential Journey Route Planner */}
             <section className="rounded-3xl border border-white/15 bg-card/60 p-6 shadow-2xl backdrop-blur-xl">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/50 pb-4">
@@ -742,25 +894,17 @@ function CitiesPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={addIntermediateStopSlot}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground"
-                  >
-                    <Plus className="size-4" />
-                    Add Stop
-                  </button>
-
-                  {journeySequence.length > 0 && (
+                {journeySequence.length > 0 && (
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={saveEntireRouteToTrip}
-                      className="gradient-sunset inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-lift transition hover:opacity-95"
+                      className="gradient-sunset inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-lift transition hover:opacity-95"
                     >
                       <Check className="size-4" />
                       Save Route
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Journey Route Nodes */}
@@ -961,7 +1105,7 @@ function CitiesPage() {
                     Explore Any Global City
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Search over 150,000 cities, states, or countries across 250 regions in the database.
+                    Search over 150,000 cities, or search any country name (e.g. India, Switzerland, France) to view famous destinations.
                   </p>
                 </div>
               </div>
@@ -972,7 +1116,7 @@ function CitiesPage() {
                   <input
                     value={exploreQuery}
                     onChange={(e) => setExploreQuery(e.target.value)}
-                    placeholder="Search by city, state or country (e.g. Kasol, Manali, Switzerland, Japan...)"
+                    placeholder="Search by city or country name (e.g. India, Switzerland, Kasol, Manali, Japan...)"
                     className="w-full bg-transparent text-sm text-white placeholder:text-muted-foreground outline-none"
                   />
                   {exploreLoading && <Loader2 className="size-4 shrink-0 animate-spin text-accent" />}
@@ -1028,7 +1172,7 @@ function CitiesPage() {
                                   description: `${c.name} is a premier destination in ${c.country}.`,
                                 });
                               }
-                              window.scrollTo({ top: 120, behavior: "smooth" });
+                              window.scrollTo({ top: 0, behavior: "smooth" });
                             }}
                             className="text-xs font-semibold text-primary hover:underline"
                           >
@@ -1057,31 +1201,6 @@ function CitiesPage() {
                   </div>
                 )}
               </div>
-
-              {/* Showcase preview for inspected city */}
-              {showcaseCity && (
-                <div className="mt-6 border-t border-white/10 pt-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1">
-                      <Eye className="size-3.5" /> Inspected Destination Showcase
-                    </span>
-                    <button
-                      onClick={() => setShowcaseCity(null)}
-                      className="text-xs text-muted-foreground hover:text-white"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <SelectedCityCard
-                    badgeText="Destination Details"
-                    badgeColor="border border-cyan-500/40 bg-cyan-950/60 text-cyan-300"
-                    city={showcaseCity}
-                    onRemove={() => setShowcaseCity(null)}
-                    onAddToTrip={() => addCityToTrip(showcaseCity)}
-                    isAdded={addedCityNames.has(showcaseCity.name.toLowerCase())}
-                  />
-                </div>
-              )}
             </section>
           </div>
 
@@ -1104,7 +1223,7 @@ function CitiesPage() {
               </div>
 
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Click any city to view its photo and guide, or manage activities.
+                Click any city to view its photo and guide above, change start/end points, or insert stops.
               </p>
 
               {stops.length === 0 ? (
@@ -1114,68 +1233,205 @@ function CitiesPage() {
                   </p>
                 </div>
               ) : (
-                <ol className="mt-4 space-y-2.5">
-                  {stops.map((s, i) => (
-                    <li
-                      key={s.id}
-                      className="group relative rounded-2xl border border-white/10 bg-secondary/40 p-3 transition hover:border-primary/50 hover:bg-secondary/70 shadow-sm"
-                    >
-                      <div
-                        onClick={() => void handleSidebarCityClick(s)}
-                        className="cursor-pointer flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="gradient-sunset flex size-6 items-center justify-center rounded-full text-[11px] font-extrabold text-primary-foreground shadow-sm">
-                            {i + 1}
-                          </span>
-                          <div>
-                            <p className="font-semibold text-white group-hover:text-primary transition">
-                              {s.city.name}
+                <ol className="mt-4 space-y-3">
+                  {stops.map((s, i) => {
+                    const isStart = i === 0;
+                    const isEnd = i === stops.length - 1 && stops.length > 1;
+                    const isVia = !isStart && !isEnd;
+
+                    return (
+                      <li key={s.id} className="space-y-1.5">
+                        {/* Role Header Badge & Change Trigger */}
+                        {isStart && (
+                          <div className="flex items-center justify-between px-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                            <span className="flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                              Start City (Departure)
+                            </span>
+                            <button
+                              onClick={() =>
+                                setChangingCityRole(changingCityRole === "start" ? null : "start")
+                              }
+                              className="text-[11px] font-semibold text-emerald-400 hover:text-white underline"
+                            >
+                              {changingCityRole === "start" ? "Cancel" : "Change"}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Inline Change Start City Dropdown */}
+                        {isStart && changingCityRole === "start" && (
+                          <div className="rounded-2xl border border-emerald-500/50 bg-secondary/90 p-3 shadow-xl">
+                            <p className="mb-1 text-[11px] font-semibold text-emerald-300">
+                              Search new Start City (replaces {s.city.name}):
                             </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {s.city.region ? `${s.city.region}, ` : ""}
-                              {s.city.country}
+                            <CitySearchInput
+                              label=""
+                              placeholder="Type departure city..."
+                              accentColor="text-emerald-400"
+                              onSelectCity={handleChangeStartCity}
+                            />
+                          </div>
+                        )}
+
+                        {isVia && (
+                          <div className="flex items-center justify-between px-1 text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                            <span className="flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-amber-400" />
+                              Stop {i} (En Route)
+                            </span>
+                          </div>
+                        )}
+
+                        {isEnd && (
+                          <div className="flex items-center justify-between px-1 text-[11px] font-bold uppercase tracking-wider text-rose-400">
+                            <span className="flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-rose-400" />
+                              Final Destination (Arrival)
+                            </span>
+                            <button
+                              onClick={() =>
+                                setChangingCityRole(changingCityRole === "end" ? null : "end")
+                              }
+                              className="text-[11px] font-semibold text-rose-400 hover:text-white underline"
+                            >
+                              {changingCityRole === "end" ? "Cancel" : "Change"}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Inline Change Final Destination Dropdown */}
+                        {isEnd && changingCityRole === "end" && (
+                          <div className="rounded-2xl border border-rose-500/50 bg-secondary/90 p-3 shadow-xl">
+                            <p className="mb-1 text-[11px] font-semibold text-rose-300">
+                              Search new Final Destination (replaces {s.city.name}):
                             </p>
+                            <CitySearchInput
+                              label=""
+                              placeholder="Type arrival destination..."
+                              accentColor="text-rose-400"
+                              onSelectCity={handleChangeEndCity}
+                            />
+                          </div>
+                        )}
+
+                        {/* Destination Card */}
+                        <div
+                          className={`group relative rounded-2xl border bg-secondary/40 p-3 transition hover:border-primary/50 hover:bg-secondary/70 shadow-sm ${
+                            isStart
+                              ? "border-emerald-500/30"
+                              : isEnd
+                              ? "border-rose-500/30"
+                              : "border-amber-500/30"
+                          }`}
+                        >
+                          <div
+                            onClick={() => void handleSidebarCityClick(s)}
+                            className="cursor-pointer flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`flex size-6 items-center justify-center rounded-full text-[11px] font-extrabold text-white shadow-sm ${
+                                  isStart
+                                    ? "bg-emerald-600"
+                                    : isEnd
+                                    ? "bg-rose-600"
+                                    : "bg-amber-600"
+                                }`}
+                              >
+                                {i + 1}
+                              </span>
+                              <div>
+                                <p className="font-semibold text-white group-hover:text-primary transition">
+                                  {s.city.name}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {s.city.region ? `${s.city.region}, ` : ""}
+                                  {s.city.country}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeStop(s.id);
+                              }}
+                              className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive"
+                              title="Remove destination"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Quick Links */}
+                          <div className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2 text-[11px]">
+                            <button
+                              onClick={() => void handleSidebarCityClick(s)}
+                              className="text-primary hover:underline flex items-center gap-1 font-semibold"
+                            >
+                              <Eye className="size-3" /> View Above
+                            </button>
+                            <span className="text-muted-foreground">·</span>
+                            <Link
+                              to="/activities"
+                              className="text-gray-300 hover:text-white flex items-center gap-1"
+                            >
+                              Activities <ExternalLink className="size-2.5" />
+                            </Link>
+                            <span className="text-muted-foreground">·</span>
+                            <Link
+                              to="/itinerary"
+                              className="text-gray-300 hover:text-white flex items-center gap-1"
+                            >
+                              Itinerary <ExternalLink className="size-2.5" />
+                            </Link>
                           </div>
                         </div>
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeStop(s.id);
-                          }}
-                          className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive"
-                          title="Remove destination"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </div>
+                        {/* Connector with Add Stop Between */}
+                        {i < stops.length - 1 && (
+                          <div className="my-2 flex flex-col items-center justify-center">
+                            <div className="h-2 w-0.5 bg-border/60" />
+                            <button
+                              onClick={() =>
+                                setInsertingStopAtIndex(
+                                  insertingStopAtIndex === i ? null : i
+                                )
+                              }
+                              className="my-1 inline-flex items-center gap-1.5 rounded-full border border-dashed border-primary/50 bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary transition hover:bg-primary hover:text-primary-foreground"
+                            >
+                              <Plus className="size-3" />
+                              Add Stop Between
+                            </button>
+                            <div className="h-2 w-0.5 bg-border/60" />
 
-                      {/* Interactive Quick Links for each destination */}
-                      <div className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2 text-[11px]">
-                        <button
-                          onClick={() => void handleSidebarCityClick(s)}
-                          className="text-primary hover:underline flex items-center gap-1 font-semibold"
-                        >
-                          <Eye className="size-3" /> View Card
-                        </button>
-                        <span className="text-muted-foreground">·</span>
-                        <Link
-                          to="/activities"
-                          className="text-gray-300 hover:text-white flex items-center gap-1"
-                        >
-                          Activities <ExternalLink className="size-2.5" />
-                        </Link>
-                        <span className="text-muted-foreground">·</span>
-                        <Link
-                          to="/itinerary"
-                          className="text-gray-300 hover:text-white flex items-center gap-1"
-                        >
-                          Itinerary <ExternalLink className="size-2.5" />
-                        </Link>
-                      </div>
-                    </li>
-                  ))}
+                            {insertingStopAtIndex === i && (
+                              <div className="w-full my-2 rounded-2xl border border-primary/50 bg-secondary/95 p-3 shadow-xl text-left">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] font-bold text-primary">
+                                    Add Stop between {s.city.name} & {stops[i + 1]?.city.name}:
+                                  </span>
+                                  <button
+                                    onClick={() => setInsertingStopAtIndex(null)}
+                                    className="text-muted-foreground hover:text-white"
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                </div>
+                                <CitySearchInput
+                                  label=""
+                                  placeholder="Search intermediate city to visit..."
+                                  accentColor="text-primary"
+                                  onSelectCity={(c) => handleInsertStopBetween(i, c)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
 

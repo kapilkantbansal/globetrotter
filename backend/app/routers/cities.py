@@ -129,6 +129,69 @@ def search_geo_cities(
                 for r in multi_rows
             ]
 
+    # Check if query matches a country name or code (e.g. India, Switzerland, Japan, France)
+    if len(q_trimmed) >= 2:
+        sql_check_country = text("""
+            SELECT id, name, iso2 
+            FROM countries 
+            WHERE name ILIKE :exact OR name ILIKE :prefix OR iso2 ILIKE :exact
+            ORDER BY 
+                CASE 
+                    WHEN name ILIKE :exact THEN 1
+                    WHEN iso2 ILIKE :exact THEN 2
+                    WHEN name ILIKE :prefix THEN 3
+                    ELSE 4
+                END
+            LIMIT 1;
+        """)
+        matched_country = db.execute(
+            sql_check_country, {"exact": q_trimmed, "prefix": f"{q_trimmed}%"}
+        ).fetchone()
+
+        if matched_country:
+            sql_country_cities = text("""
+                SELECT c.id, c.name, s.name AS state, co.name AS country, co.iso2 AS country_code, co.emoji,
+                       CAST(c.latitude AS float) AS latitude, CAST(c.longitude AS float) AS longitude,
+                       c.population, c.timezone
+                FROM cities c
+                LEFT JOIN states s ON c.state_id = s.id
+                LEFT JOIN countries co ON c.country_id = co.id
+                WHERE co.id = :country_id
+                  AND c.name NOT ILIKE '%division%'
+                  AND c.name NOT ILIKE '%district%'
+                  AND c.name NOT ILIKE '%suburban%'
+                  AND c.name NOT ILIKE '%urban%'
+                  AND c.name NOT ILIKE '%parganas%'
+                ORDER BY 
+                    CASE WHEN c.name ILIKE :exact THEN 0 ELSE 1 END,
+                    c.population DESC NULLS LAST
+                LIMIT :limit;
+            """)
+            country_cities = db.execute(
+                sql_country_cities,
+                {
+                    "country_id": matched_country.id,
+                    "exact": q_trimmed,
+                    "limit": limit,
+                },
+            ).fetchall()
+            if country_cities:
+                return [
+                    schemas.GeoCityOut(
+                        id=r.id,
+                        name=r.name,
+                        state=r.state,
+                        country=r.country or "",
+                        country_code=r.country_code,
+                        emoji=r.emoji,
+                        latitude=r.latitude,
+                        longitude=r.longitude,
+                        population=r.population,
+                        timezone=r.timezone,
+                    )
+                    for r in country_cities
+                ]
+
     sql_search = text("""
         SELECT c.id, c.name, s.name AS state, co.name AS country, co.iso2 AS country_code, co.emoji,
                CAST(c.latitude AS float) AS latitude, CAST(c.longitude AS float) AS longitude,
