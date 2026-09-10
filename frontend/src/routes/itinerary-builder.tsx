@@ -1,4 +1,4 @@
-import { useEffect, useState, Component, type ErrorInfo, type ReactNode } from "react";
+import { useEffect, useState, useMemo, Component, type ErrorInfo, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Navbar } from "@/components/Navbar";
 import { GlobeMap } from "@/components/GlobeMap";
@@ -53,7 +53,12 @@ class MapErrorBoundary extends Component<MapErrorBoundaryProps, MapErrorBoundary
 import { getActiveTripId, loadTrips, setActiveTripId } from "@/lib/tripStore";
 import { getMyTrips } from "@/api/tripsApi";
 import { USE_FAKE_DATA } from "@/config";
-import { loadStops, type StoredStop } from "@/lib/itineraryStore";
+import {
+  loadStops,
+  loadReturnJourney,
+  type StoredStop,
+  type ReturnJourneyConfig,
+} from "@/lib/itineraryStore";
 import type { TripListItem } from "@/api/types";
 import {
   CalendarDays,
@@ -66,6 +71,8 @@ import {
   ExternalLink,
   PlusCircle,
   Sparkles,
+  RotateCcw,
+  PlaneTakeoff,
 } from "lucide-react";
 
 export const Route = createFileRoute("/itinerary-builder")({
@@ -93,6 +100,12 @@ function BuilderPage() {
   const [tripId, setTripId] = useState<number | null>(null);
   const [stops, setStops] = useState<StoredStop[]>([]);
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
+  const [returnJourney, setReturnJourney] = useState<ReturnJourneyConfig>({
+    enabled: false,
+    transportMode: "flight",
+    travelHours: 2,
+  });
+  const [journeyLegTab, setJourneyLegTab] = useState<"going" | "return">("going");
 
   // Fetch trips from database (getMyTrips API) or local store
   useEffect(() => {
@@ -121,15 +134,60 @@ function BuilderPage() {
     initTrips();
   }, []);
 
-  // Load stops whenever tripId changes and persist active trip
+  // Load stops and return journey whenever tripId changes and persist active trip
   useEffect(() => {
     if (tripId == null) {
       setStops([]);
+      setReturnJourney({ enabled: false, transportMode: "flight", travelHours: 2 });
+      setJourneyLegTab("going");
       return;
     }
     setActiveTripId(tripId);
     setStops(loadStops(tripId));
+    const rj = loadReturnJourney(tripId);
+    setReturnJourney(rj);
+    if (!rj.enabled) {
+      setJourneyLegTab("going");
+    }
   }, [tripId]);
+
+  // Listen for return journey changes in other views/tabs
+  useEffect(() => {
+    function handleReturnUpdated(e: any) {
+      if (tripId != null && e.detail?.tripId === tripId) {
+        const rj = loadReturnJourney(tripId);
+        setReturnJourney(rj);
+        if (!rj.enabled) {
+          setJourneyLegTab("going");
+        }
+      }
+    }
+    window.addEventListener("globetrotter:return-journey-updated", handleReturnUpdated);
+    return () => {
+      window.removeEventListener("globetrotter:return-journey-updated", handleReturnUpdated);
+    };
+  }, [tripId]);
+
+  // Compute synthetic single direct return leg from last destination to origin
+  const returnStops: StoredStop[] = useMemo(() => {
+    if (stops.length < 2) return [];
+    const last = stops[stops.length - 1]!;
+    const origin = stops[0]!;
+    return [
+      {
+        ...last,
+        id: `return_origin_${last.id}`,
+      },
+      {
+        ...origin,
+        id: `return_dest_${origin.id}`,
+      },
+    ];
+  }, [stops]);
+
+  const isReturnActive =
+    journeyLegTab === "return" && returnJourney.enabled && returnStops.length >= 2;
+  const displayedStops = isReturnActive ? returnStops : stops;
 
   const activeTrip = trips.find((t) => t.id === tripId) ?? null;
 
@@ -191,6 +249,38 @@ function BuilderPage() {
               </select>
             </div>
 
+            {/* Going / Return Journey Route Switcher (ONLY displayed when Enable Return Journey is ON) */}
+            {returnJourney.enabled && (
+              <div className="flex items-center rounded-2xl border border-indigo-500/40 bg-slate-900/90 p-1 shadow-md">
+                <button
+                  type="button"
+                  onClick={() => setJourneyLegTab("going")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    !isReturnActive
+                      ? "bg-sky-500 text-slate-950 shadow-md"
+                      : "text-gray-300 hover:text-white"
+                  }`}
+                  title="View Going Journey Sequence"
+                >
+                  <PlaneTakeoff className="size-3.5" />
+                  <span>Going Route</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJourneyLegTab("return")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    isReturnActive
+                      ? "bg-indigo-500 text-white shadow-md"
+                      : "text-gray-300 hover:text-white"
+                  }`}
+                  title="View Direct Return Transit Leg"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Return Route (Direct)</span>
+                </button>
+              </div>
+            )}
+
             {/* View Mode Toggle: [ 🌍 3D Globe | 🗺️ 2D Map ] */}
             <div className="flex items-center rounded-2xl border border-white/15 bg-slate-900/90 p-1 shadow-md">
               <button
@@ -228,8 +318,12 @@ function BuilderPage() {
           <MapErrorBoundary>
             <div className={`h-full w-full ${viewMode === "3d" ? "block" : "hidden"}`}>
               <GlobeMap
-                stops={stops}
-                tripName={activeTrip?.name}
+                stops={displayedStops}
+                tripName={
+                  isReturnActive
+                    ? `${activeTrip?.name ?? "Trip"} (Return Direct)`
+                    : activeTrip?.name
+                }
                 tripDates={
                   activeTrip
                     ? `${activeTrip.start_date} → ${activeTrip.end_date}`
@@ -241,8 +335,12 @@ function BuilderPage() {
             </div>
             <div className={`h-full w-full ${viewMode === "2d" ? "block" : "hidden"}`}>
               <Map2D
-                stops={stops}
-                tripName={activeTrip?.name}
+                stops={displayedStops}
+                tripName={
+                  isReturnActive
+                    ? `${activeTrip?.name ?? "Trip"} (Return Direct)`
+                    : activeTrip?.name
+                }
                 tripDates={
                   activeTrip
                     ? `${activeTrip.start_date} → ${activeTrip.end_date}`
@@ -261,11 +359,22 @@ function BuilderPage() {
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div>
               <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-                <Navigation className="size-5 text-sky-400" />
-                <span>Journey Itinerary & Destination Sequence</span>
+                {isReturnActive ? (
+                  <>
+                    <RotateCcw className="size-5 text-indigo-400" />
+                    <span>Return Journey Route (Single Direct Segment)</span>
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="size-5 text-sky-400" />
+                    <span>Journey Itinerary & Destination Sequence</span>
+                  </>
+                )}
               </h2>
               <p className="mt-1 text-xs sm:text-sm text-gray-400">
-                Explore each planned waypoint, departure city, and final destination in chronological order.
+                {isReturnActive
+                  ? "Single direct non-stop return transit from your Final Destination back to your Origin City (0 intermediate stops)."
+                  : "Explore each planned waypoint, departure city, and final destination in chronological order."}
               </p>
             </div>
             <Link
@@ -273,12 +382,81 @@ function BuilderPage() {
               className="inline-flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-xs font-bold text-sky-400 transition hover:bg-sky-500/25"
             >
               <PlusCircle className="size-4" />
-              <span>Customize Destinations in 2D</span>
+              <span>Customize in Cities Route Builder</span>
             </Link>
           </div>
 
-          {/* Stops Sequence Grid */}
-          {stops.length > 0 ? (
+          {/* Stops Sequence Grid / Return Leg Card */}
+          {isReturnActive ? (
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-indigo-500/40 bg-gradient-to-r from-indigo-950/40 via-slate-950/70 to-indigo-950/20 p-6 shadow-xl backdrop-blur-xl">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-indigo-500/20 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                      <RotateCcw className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">Direct Non-Stop Return Leg</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {returnStops[0]?.city.name} → {returnStops[1]?.city.name}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-indigo-500/40 bg-indigo-950/80 px-4 py-1.5 text-xs font-bold text-indigo-300">
+                    <span>Direct Non-Stop Return</span>
+                    <span>·</span>
+                    <span className="text-indigo-400/90 font-medium">Excluded from destination count</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                  {/* Point 1: Return Origin (Final Destination) */}
+                  <article className="rounded-2xl border border-rose-500/30 bg-slate-900/60 p-5 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="rounded-full border border-rose-500/40 bg-rose-950/60 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-rose-300">
+                        From: Return Origin (Final Destination)
+                      </span>
+                      <span className="text-xs font-bold text-gray-400">Fixed Point 1</span>
+                    </div>
+                    <div className="mt-4">
+                      <h4 className="text-xl font-bold text-white">{returnStops[0]?.city.name}</h4>
+                      <p className="text-xs text-gray-400">
+                        {returnStops[0]?.city.region ? `${returnStops[0].city.region}, ` : ""}
+                        {returnStops[0]?.city.country}
+                      </p>
+                    </div>
+                    {returnStops[0]?.city.description && (
+                      <p className="mt-3 text-xs text-gray-300 leading-relaxed">
+                        {returnStops[0].city.description}
+                      </p>
+                    )}
+                  </article>
+
+                  {/* Point 2: Return Destination (Home City) */}
+                  <article className="rounded-2xl border border-emerald-500/30 bg-slate-900/60 p-5 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
+                        To: Return Arrival (Home City (Departure))
+                      </span>
+                      <span className="text-xs font-bold text-gray-400">Fixed Point 2</span>
+                    </div>
+                    <div className="mt-4">
+                      <h4 className="text-xl font-bold text-white">{returnStops[1]?.city.name}</h4>
+                      <p className="text-xs text-gray-400">
+                        {returnStops[1]?.city.region ? `${returnStops[1].city.region}, ` : ""}
+                        {returnStops[1]?.city.country}
+                      </p>
+                    </div>
+                    {returnStops[1]?.city.description && (
+                      <p className="mt-3 text-xs text-gray-300 leading-relaxed">
+                        {returnStops[1].city.description}
+                      </p>
+                    )}
+                  </article>
+                </div>
+              </div>
+            </div>
+          ) : stops.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {stops.map((stop, idx) => {
                 const isOrigin = idx === 0;
@@ -289,7 +467,7 @@ function BuilderPage() {
                   ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
                   : "bg-sky-500/20 text-sky-400 border-sky-500/30";
                 const roleText = isOrigin
-                  ? "Origin Point"
+                  ? "Home City (Departure)"
                   : isDest
                   ? "Final Destination"
                   : `Intermediate Stop #${idx}`;
@@ -307,7 +485,7 @@ function BuilderPage() {
                         {roleText}
                       </span>
                       <span className="text-xs font-bold text-gray-400">
-                        Stop {idx + 1} of {stops.length}
+                        {isOrigin ? "Departure" : `Destination ${idx} of ${Math.max(1, stops.length - 1)}`}
                       </span>
                     </div>
 

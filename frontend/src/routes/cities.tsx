@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CalendarDays,
   Check,
+  Clock,
   Compass,
   ExternalLink,
   Eye,
@@ -13,7 +14,9 @@ import {
   Loader2,
   MapPin,
   Navigation,
+  PlaneTakeoff,
   Plus,
+  RotateCcw,
   Search,
   Sparkles,
   Trash2,
@@ -30,6 +33,10 @@ import {
   loadStops,
   newStopId,
   saveStops,
+  loadReturnJourney,
+  saveReturnJourney,
+  type ReturnJourneyConfig,
+  type TransportMode,
   type StoredStop,
 } from "@/lib/itineraryStore";
 import type { City, CityDetail, GeoCitySearchResult, TripListItem } from "@/api/types";
@@ -112,6 +119,7 @@ function CitySearchInput({
         })
         .catch(() => {
           setResults([]);
+          setOpen(true);
         })
         .finally(() => setLoading(false));
     }, 200);
@@ -132,7 +140,7 @@ function CitySearchInput({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
-            if (results.length > 0) setOpen(true);
+            if (query.trim().length >= 1) setOpen(true);
           }}
           placeholder={placeholder}
           aria-label={label || placeholder}
@@ -185,6 +193,18 @@ function CitySearchInput({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Message when city is not in the list */}
+      {open && !loading && query.trim().length >= 1 && results.length === 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-amber-500/30 bg-card/95 p-4 shadow-2xl backdrop-blur-xl text-center">
+          <p className="text-xs font-semibold text-amber-300">
+            City not found in the list
+          </p>
+          <p className="mt-1 text-xs text-gray-300">
+            Please select your nearby city or major regional airport / district.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -352,6 +372,11 @@ function CitiesPage() {
   const [viaStops, setViaStops] = useState<{ id: string; city: CityDetail | null }[]>([]);
   const [stopCity, setStopCity] = useState<CityDetail | null>(null);
 
+  // Return Journey states
+  const [returnJourneyEnabled, setReturnJourneyEnabled] = useState(false);
+  const [returnTransportMode, setReturnTransportMode] = useState<TransportMode>("flight");
+  const [returnTravelHours, setReturnTravelHours] = useState<number>(2);
+
   // Active showcase for inspected/clicked city (displayed at the very top above all things)
   const [showcaseCity, setShowcaseCity] = useState<CityDetail | null>(null);
 
@@ -398,6 +423,11 @@ function CitiesPage() {
       setActiveTripId(tripId);
       const s = loadStops(tripId);
       setStops(s);
+
+      const rj = loadReturnJourney(tripId);
+      setReturnJourneyEnabled(rj.enabled);
+      setReturnTransportMode(rj.transportMode);
+      setReturnTravelHours(rj.travelHours);
     }
   }, [tripId]);
 
@@ -776,7 +806,8 @@ function CitiesPage() {
 
     setStops(nextStops);
     saveStops(tripId, nextStops);
-    toast.success(`Full route saved to ${trip.name}! (${nextStops.length} destinations)`);
+    const count = Math.max(0, nextStops.length - 1);
+    toast.success(`Full route saved to ${trip.name}! (${count} ${count === 1 ? "destination" : "destinations"})`);
   }
 
   // Remove stop from trip list
@@ -861,6 +892,104 @@ function CitiesPage() {
 
   const addedCityNames = new Set(stops.map((s) => s.city.name.toLowerCase()));
 
+  // Automatically identify the Going section's Start City and Final Destination
+  const currentGoingStartCity: CityDetail | null = useMemo(() => {
+    if (startCity) return startCity;
+    if (stops.length > 0 && stops[0]?.city) {
+      const c = stops[0].city;
+      return {
+        id: c.id,
+        name: c.name,
+        country: c.country,
+        state: c.region,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        image_url: c.image_url,
+        description: c.description,
+        cost_index: c.cost_index,
+        popularity: c.popularity,
+      };
+    }
+    return null;
+  }, [startCity, stops]);
+
+  const currentGoingFinalCity: CityDetail | null = useMemo(() => {
+    if (stopCity) return stopCity;
+    if (stops.length > 1 && stops[stops.length - 1]?.city) {
+      const c = stops[stops.length - 1].city;
+      return {
+        id: c.id,
+        name: c.name,
+        country: c.country,
+        state: c.region,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        image_url: c.image_url,
+        description: c.description,
+        cost_index: c.cost_index,
+        popularity: c.popularity,
+      };
+    }
+    return null;
+  }, [stopCity, stops]);
+
+  const returnDirectDistanceKm = useMemo(() => {
+    if (
+      currentGoingFinalCity?.latitude &&
+      currentGoingFinalCity?.longitude &&
+      currentGoingStartCity?.latitude &&
+      currentGoingStartCity?.longitude
+    ) {
+      return calculateDistance(
+        Number(currentGoingFinalCity.latitude),
+        Number(currentGoingFinalCity.longitude),
+        Number(currentGoingStartCity.latitude),
+        Number(currentGoingStartCity.longitude)
+      );
+    }
+    return null;
+  }, [currentGoingFinalCity, currentGoingStartCity]);
+
+  function handleToggleReturnJourney(enabled: boolean) {
+    setReturnJourneyEnabled(enabled);
+    if (tripId != null) {
+      saveReturnJourney(tripId, {
+        enabled,
+        transportMode: returnTransportMode,
+        travelHours: returnTravelHours,
+      });
+      if (enabled) {
+        toast.success("Return journey enabled!");
+      } else {
+        toast.info("Return journey disabled");
+      }
+    }
+  }
+
+  function handleUpdateReturnTransport(mode: TransportMode) {
+    setReturnTransportMode(mode);
+    if (tripId != null) {
+      saveReturnJourney(tripId, {
+        enabled: returnJourneyEnabled,
+        transportMode: mode,
+        travelHours: returnTravelHours,
+      });
+    }
+  }
+
+  function handleUpdateReturnHours(hours: number) {
+    setReturnTravelHours(hours);
+    if (tripId != null) {
+      saveReturnJourney(tripId, {
+        enabled: returnJourneyEnabled,
+        transportMode: returnTransportMode,
+        travelHours: hours,
+      });
+    }
+  }
+
+  const destinationCount = Math.max(0, stops.length - 1);
+
   return (
     <div className="min-h-screen bg-transparent">
       <Navbar />
@@ -876,7 +1005,7 @@ function CitiesPage() {
               Explore <span className="text-gradient-sunset">Cities</span>
             </h1>
             <p className="mt-3 max-w-2xl text-muted-foreground">
-              Search over 150,000 cities worldwide. Plan your route from Departure through intermediate
+              Search over 150,000 cities worldwide. Plan your route from Home City (departure) through intermediate
               stops to your Final Destination, and explore authentic travel guides.
             </p>
           </div>
@@ -889,7 +1018,7 @@ function CitiesPage() {
               </span>
               <p className="font-display text-lg font-bold capitalize text-white">{trip.name}</p>
               <p className="text-xs text-primary">
-                {stops.length} {stops.length === 1 ? "destination" : "destinations"} planned
+                {destinationCount} {destinationCount === 1 ? "destination" : "destinations"} planned
               </p>
             </div>
           )}
@@ -937,7 +1066,7 @@ function CitiesPage() {
                     Plan Journey Route
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Set your Start city, add intermediate stops en route, and pick your Final Destination.
+                    Set your Home City (departure), add intermediate stops en route, and pick your Final Destination.
                   </p>
                 </div>
 
@@ -956,7 +1085,7 @@ function CitiesPage() {
 
               {/* Journey Route Nodes */}
               <div className="mt-6 space-y-6">
-                {/* 1. START CITY */}
+                {/* 1. HOME CITY (DEPARTURE) */}
                 <div className="relative rounded-2xl border border-emerald-500/20 bg-card/75 p-5 shadow-lg">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -964,7 +1093,7 @@ function CitiesPage() {
                         A
                       </span>
                       <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                        Start City (Departure / Origin)
+                        Home City (Departure)
                       </span>
                     </div>
                     {startCity && (
@@ -981,13 +1110,13 @@ function CitiesPage() {
                     {!startCity ? (
                       <CitySearchInput
                         label=""
-                        placeholder="Search departure city (e.g. Delhi, London, Zurich...)"
+                        placeholder="Search Home City (departure) (e.g. Delhi, London, Zurich...)"
                         accentColor="text-emerald-400"
                         onSelectCity={handleSelectStart}
                       />
                     ) : (
                       <SelectedCityCard
-                        badgeText="Departure / Origin"
+                        badgeText="Home City (Departure)"
                         badgeColor="border border-emerald-500/40 bg-emerald-950/60 text-emerald-300"
                         city={startCity}
                         onRemove={() => setStartCity(null)}
@@ -1026,7 +1155,7 @@ function CitiesPage() {
                       {!via.city ? (
                         <CitySearchInput
                           label=""
-                          placeholder="Search intermediate stop (e.g. Kasol, Tosh, Chandigarh...)"
+                          placeholder="Search intermediate stop (e.g. Agra, Jaipur, Florence...)"
                           accentColor="text-amber-400"
                           onSelectCity={(c) => handleSelectVia(idx, c)}
                         />
@@ -1086,7 +1215,7 @@ function CitiesPage() {
                     {!stopCity ? (
                       <CitySearchInput
                         label=""
-                        placeholder="Search final destination (e.g. Manali, Paris, Tokyo...)"
+                        placeholder="Search final destination (e.g. Rome, Paris, Tokyo...)"
                         accentColor="text-rose-400"
                         onSelectCity={handleSelectStop}
                       />
@@ -1143,6 +1272,153 @@ function CitiesPage() {
               )}
             </section>
 
+            {/* TOGGLE: Enable Return Journey (Below the existing Going journey section) */}
+            <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-card/80 to-indigo-950/20 p-5 shadow-xl backdrop-blur-xl">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-500/20 text-indigo-400">
+                    <RotateCcw className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-base font-bold text-white">
+                      Enable Return Journey
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Add a single direct return transit leg from your Final Destination back to Home City (departure)
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={returnJourneyEnabled}
+                    onChange={(e) => handleToggleReturnJourney(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-7 w-14 rounded-full bg-secondary/80 after:absolute after:top-[3px] after:left-[4px] after:h-5 after:w-6 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-6 peer-focus:outline-none shadow-inner" />
+                  <span className="ml-3 text-xs font-bold uppercase tracking-wider text-indigo-300">
+                    {returnJourneyEnabled ? "Enabled" : "Off"}
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* RETURN JOURNEY SECTION: Exactly two fixed points, read-only, non-searchable, strictly NO Add Stop Between */}
+            {returnJourneyEnabled && (
+              <section className="rounded-3xl border border-indigo-500/40 bg-card/75 p-6 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-indigo-500/20 pb-4">
+                  <div>
+                    <h2 className="font-display text-xl font-bold text-white flex items-center gap-2">
+                      <RotateCcw className="size-5 text-indigo-400" />
+                      Return Journey
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-indigo-500/40 bg-indigo-950/60 px-3 py-1 text-xs font-bold text-indigo-300">
+                    Fixed Direct Route · Excluded from Destination Count
+                  </span>
+                </div>
+
+                <div className="mt-6 space-y-6">
+                  {/* FIXED POINT 1: FROM (Current Final Destination from Going section) */}
+                  <div className="relative rounded-2xl border border-rose-500/30 bg-card/85 p-5 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex size-6 items-center justify-center rounded-full bg-rose-500/20 text-xs font-bold text-rose-400">
+                          From
+                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
+                          Return Departure Point (Final Destination)
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-rose-950/60 border border-rose-500/30 px-2.5 py-0.5 text-[10px] font-semibold text-rose-300">
+                        Read-Only · Fixed to Going Arrival
+                      </span>
+                    </div>
+
+                    <div className="mt-3">
+                      {currentGoingFinalCity ? (
+                        <SelectedCityCard
+                          badgeText="Return Origin (From)"
+                          badgeColor="border border-rose-500/40 bg-rose-950/60 text-rose-300"
+                          city={currentGoingFinalCity}
+                        />
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-rose-500/30 p-5 text-center">
+                          <p className="text-xs text-rose-300 font-semibold">
+                            No Final Destination established yet in the Going journey above.
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Pick a Final Destination in the Going journey section to automatically lock this return departure point.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DIRECT LEG CONNECTOR: Clean direct return route indicator (NO mode/hours) */}
+                  <div className="relative rounded-2xl border border-indigo-500/30 bg-indigo-950/30 p-4 shadow-inner backdrop-blur-md">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                          <RotateCcw className="size-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                            Direct Return Route
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {returnDirectDistanceKm
+                              ? `Direct non-stop path: ~${returnDirectDistanceKm.toLocaleString()} km`
+                              : "Direct non-stop transit back to Home City (departure)"}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-indigo-500/40 bg-indigo-900/40 px-3 py-1 text-xs font-medium text-indigo-300">
+                        Direct Non-Stop Leg
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* FIXED POINT 2: TO (Current Home City (Departure) from Going section) */}
+                  <div className="relative rounded-2xl border border-emerald-500/30 bg-card/85 p-5 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex size-6 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-bold text-emerald-400">
+                          To
+                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                          Return Arrival Point (Home City (Departure))
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                        Read-Only · Fixed to Departure
+                      </span>
+                    </div>
+
+                    <div className="mt-3">
+                      {currentGoingStartCity ? (
+                        <SelectedCityCard
+                          badgeText="Return Destination (Home City)"
+                          badgeColor="border border-emerald-500/40 bg-emerald-950/60 text-emerald-300"
+                          city={currentGoingStartCity}
+                        />
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-emerald-500/30 p-5 text-center">
+                          <p className="text-xs text-emerald-300 font-semibold">
+                            No Home City (departure) established yet in the Going journey above.
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Pick a Home City (departure) in the Going journey section to automatically lock this return arrival point.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* SECTION: Global City Explorer */}
             <section className="rounded-3xl border border-white/10 bg-card/50 p-6 shadow-xl backdrop-blur-md">
               <div className="flex items-center justify-between border-b border-border/40 pb-4">
@@ -1163,7 +1439,7 @@ function CitiesPage() {
                   <input
                     value={exploreQuery}
                     onChange={(e) => setExploreQuery(e.target.value)}
-                    placeholder="Search by city or country name (e.g. India, Switzerland, Kasol, Manali, Japan...)"
+                    placeholder="Search by city or country name (e.g. India, Switzerland, France, Japan, Rome...)"
                     className="w-full bg-transparent text-sm text-white placeholder:text-muted-foreground outline-none"
                   />
                   {exploreLoading && <Loader2 className="size-4 shrink-0 animate-spin text-accent" />}
@@ -1173,6 +1449,16 @@ function CitiesPage() {
                     </button>
                   )}
                 </div>
+
+                {/* Empty State when city is not found in explore */}
+                {exploreQuery.trim().length >= 1 && !exploreLoading && exploreResults.length === 0 && (
+                  <div className="mt-4 rounded-2xl border border-amber-500/30 bg-card/85 p-5 text-center shadow-lg">
+                    <p className="text-xs font-semibold text-amber-300">City not found in the list</p>
+                    <p className="mt-1 text-xs text-gray-300">
+                      Please select your nearby city or major regional airport / district.
+                    </p>
+                  </div>
+                )}
 
                 {/* Explore Results Grid */}
                 {exploreResults.length > 0 && (
@@ -1260,7 +1546,7 @@ function CitiesPage() {
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h3 className="flex items-center gap-2 font-display text-base font-bold text-white">
                   <MapPin className="size-4 text-primary" />
-                  {trip?.name ?? "Trip"} Destinations ({stops.length})
+                  Planned Destinations ({destinationCount})
                 </h3>
                 {stops.length > 0 && (
                   <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">
@@ -1270,13 +1556,13 @@ function CitiesPage() {
               </div>
 
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Click any city to view its photo and guide above, change start/end points, or insert stops.
+                Click any city to view its photo and guide above, change departure/destination points, or insert stops.
               </p>
 
               {stops.length === 0 ? (
                 <div className="mt-4 rounded-2xl border border-dashed border-border/60 p-5 text-center">
                   <p className="text-xs text-muted-foreground">
-                    No destinations added yet. Pick a Start & Stop city on the left to begin your journey!
+                    No destinations added yet. Pick a Home City & Destination on the left to begin your journey!
                   </p>
                 </div>
               ) : (
@@ -1293,7 +1579,7 @@ function CitiesPage() {
                           <div className="flex items-center justify-between px-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                             <span className="flex items-center gap-1.5">
                               <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                              Start City (Departure)
+                              Home City (Departure)
                             </span>
                             <button
                               onClick={() =>
@@ -1306,15 +1592,15 @@ function CitiesPage() {
                           </div>
                         )}
 
-                        {/* Inline Change Start City Dropdown */}
+                        {/* Inline Change Home City Dropdown */}
                         {isStart && changingCityRole === "start" && (
                           <div className="rounded-2xl border border-emerald-500/50 bg-secondary/90 p-3 shadow-xl">
                             <p className="mb-1 text-[11px] font-semibold text-emerald-300">
-                              Search new Start City (replaces {s.city.name}):
+                              Search new Home City (departure) (replaces {s.city.name}):
                             </p>
                             <CitySearchInput
                               label=""
-                              placeholder="Type departure city..."
+                              placeholder="Type Home City (departure)..."
                               accentColor="text-emerald-400"
                               onSelectCity={handleChangeStartCity}
                             />
@@ -1480,6 +1766,28 @@ function CitiesPage() {
                     );
                   })}
                 </ol>
+              )}
+
+              {/* Return Journey Status Badge (Excluded from destination count) */}
+              {returnJourneyEnabled && (
+                <div className="mt-4 rounded-2xl border border-indigo-500/30 bg-indigo-950/25 p-3 text-xs">
+                  <div className="flex items-center justify-between font-bold text-indigo-300">
+                    <span className="flex items-center gap-1.5">
+                      <RotateCcw className="size-3.5 text-indigo-400" />
+                      Return Journey Active
+                    </span>
+                    <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[9px] uppercase tracking-wider text-indigo-300">
+                      Direct Leg
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-gray-300">
+                    {currentGoingFinalCity?.name ?? "Final Destination"} → {currentGoingStartCity?.name ?? "Home City (Departure)"}
+                  </p>
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Direct Non-Stop Leg</span>
+                    <span className="text-indigo-400/90 font-medium">Excluded from count</span>
+                  </div>
+                </div>
               )}
 
               {/* Action buttons */}

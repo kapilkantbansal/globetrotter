@@ -44,9 +44,9 @@ export function saveStops(tripId: number, stops: StoredStop[]) {
   store[String(tripId)] = stops;
   writeStore(store);
 
-  // keep stop_count on the trip list in sync
+  // keep stop_count on the trip list in sync (excluding the first home departure city)
   const trips = loadTrips().map((t: TripListItem) =>
-    t.id === tripId ? { ...t, stop_count: stops.length } : t,
+    t.id === tripId ? { ...t, stop_count: Math.max(0, stops.length - 1) } : t,
   );
   saveTrips(trips);
 }
@@ -113,4 +113,54 @@ export function formatDay(iso: string) {
 
 export function inr(amount: number) {
   return `₹${amount.toLocaleString("en-IN")}`;
+}
+
+export type TransportMode = "flight" | "drive" | "train" | "bus";
+
+export interface ReturnJourneyConfig {
+  enabled: boolean;
+  transportMode: TransportMode;
+  travelHours: number;
+}
+
+const RETURN_JOURNEY_KEY = "globetrotter.return_journeys";
+
+export function loadReturnJourney(tripId: number): ReturnJourneyConfig {
+  if (!isBrowser()) return { enabled: false, transportMode: "flight", travelHours: 2 };
+  try {
+    const raw = window.localStorage.getItem(RETURN_JOURNEY_KEY);
+    if (!raw) return { enabled: false, transportMode: "flight", travelHours: 2 };
+    const data = JSON.parse(raw) as Record<string, ReturnJourneyConfig>;
+    const cfg = data[String(tripId)];
+    if (cfg) {
+      return {
+        enabled: Boolean(cfg.enabled),
+        transportMode: cfg.transportMode || "flight",
+        travelHours:
+          typeof cfg.travelHours === "number" && !isNaN(cfg.travelHours)
+            ? cfg.travelHours
+            : 2,
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return { enabled: false, transportMode: "flight", travelHours: 2 };
+}
+
+export function saveReturnJourney(tripId: number, config: ReturnJourneyConfig) {
+  if (!isBrowser()) return;
+  try {
+    const raw = window.localStorage.getItem(RETURN_JOURNEY_KEY);
+    const data = raw ? (JSON.parse(raw) as Record<string, ReturnJourneyConfig>) : {};
+    data[String(tripId)] = config;
+    window.localStorage.setItem(RETURN_JOURNEY_KEY, JSON.stringify(data));
+    window.dispatchEvent(
+      new CustomEvent("globetrotter:return-journey-updated", {
+        detail: { tripId, config },
+      })
+    );
+  } catch {
+    // ignore
+  }
 }

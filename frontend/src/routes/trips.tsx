@@ -95,6 +95,14 @@ function TripsPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  function getTripDestinationCount(tripId: number, fallbackStopCount = 0): number {
+    const loaded = loadStops(tripId);
+    if (loaded.length > 0) {
+      return Math.max(0, loaded.length - 1);
+    }
+    return Math.max(0, fallbackStopCount > 0 ? fallbackStopCount - 1 : 0);
+  }
+
   const visible = useMemo(() => {
     const list = trips.filter((t) => {
       const matchesQuery = t.name.toLowerCase().includes(query.toLowerCase());
@@ -103,11 +111,12 @@ function TripsPage() {
         (filter === "upcoming" ? t.end_date >= today : t.end_date < today);
       return matchesQuery && matchesFilter;
     });
+
     return [...list].sort((a, b) => {
       if (sort === "name") return a.name.localeCompare(b.name);
       if (sort === "stops") {
-        const aCount = Math.max(a.stop_count, loadStops(a.id).length);
-        const bCount = Math.max(b.stop_count, loadStops(b.id).length);
+        const aCount = getTripDestinationCount(a.id, a.stop_count);
+        const bCount = getTripDestinationCount(b.id, b.stop_count);
         return bCount - aCount;
       }
       return a.start_date.localeCompare(b.start_date);
@@ -146,8 +155,8 @@ function TripsPage() {
     toast.success("Trip renamed");
   }
 
-  const totalStops = trips.reduce(
-    (sum, t) => sum + Math.max(t.stop_count, loadStops(t.id).length),
+  const totalDestinations = trips.reduce(
+    (sum, t) => sum + getTripDestinationCount(t.id, t.stop_count),
     0
   );
 
@@ -161,8 +170,8 @@ function TripsPage() {
         : loadStops(activeTrip.id).map((s2) => s2.city.name),
     [activeTrip]
   );
-  const activeStopCount = activeTrip
-    ? Math.max(activeTrip.stop_count, selectedStops.length)
+  const activeDestinationCount = activeTrip
+    ? getTripDestinationCount(activeTrip.id, activeTrip.stop_count)
     : 0;
 
   return (
@@ -180,7 +189,8 @@ function TripsPage() {
             </h1>
             <p className="mt-3 text-muted-foreground">
               {trips.length} {trips.length === 1 ? "trip" : "trips"} ·{" "}
-              {totalStops} destinations planned
+              {totalDestinations}{" "}
+              {totalDestinations === 1 ? "destination" : "destinations"} planned
             </p>
           </div>
           <Link
@@ -344,8 +354,8 @@ function TripsPage() {
                     </p>
                     <p className="mt-1 flex items-center gap-2 text-sm text-gray-400">
                       <MapPin className="size-4 shrink-0 text-accent" />
-                      {activeStopCount}{" "}
-                      {activeStopCount === 1 ? "destination" : "destinations"}
+                      {activeDestinationCount}{" "}
+                      {activeDestinationCount === 1 ? "destination" : "destinations"}
                     </p>
 
                     <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -354,7 +364,7 @@ function TripsPage() {
                           ["Start", activeTrip.start_date],
                           ["End", activeTrip.end_date],
                           ["Days", String(tripDays(activeTrip))],
-                          ["Stops", String(activeStopCount)],
+                          ["Destinations", String(activeDestinationCount)],
                         ] as const
                       ).map(([label, value]) => (
                         <div key={label} className="rounded-xl bg-secondary/50 border border-white/5 p-3">
@@ -378,9 +388,14 @@ function TripsPage() {
                         {selectedStops.map((name, i) => (
                           <li key={`${name}-${i}`} className="flex items-center gap-3 text-sm">
                             <span className="gradient-sunset flex size-6 items-center justify-center rounded-full text-[0.65rem] font-bold text-primary-foreground">
-                              {i + 1}
+                              {i === 0 ? "H" : i}
                             </span>
-                            {name}
+                            <span className="font-medium text-white">{name}</span>
+                            {i === 0 && (
+                              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                                Home City (Departure)
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ol>
