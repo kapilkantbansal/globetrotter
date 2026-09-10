@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D World Route Explorer — Hierarchical Geographic Globe</title>
+
+  <!-- External Libraries -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/globe.gl@2.32.0/dist/globe.gl.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- 3D WebGL Globe Canvas Container -->
+<div id="globeViz"></div>
+
+<!-- Top Right: Switch to 2D Leaflet Map -->
+<a href="index.html" class="switch-mode-btn">
+  <i data-lucide="map" style="width: 18px; height: 18px; color: var(--accent);"></i>
+  <span>Switch to 2D Map</span>
+</a>
+
+<!-- Left Control & Route Panel -->
+<div class="control-panel">
+  <div class="panel-header">
+    <div class="panel-brand">
+      <i data-lucide="compass" style="width: 22px; height: 22px;"></i>
+      <span>Voyage 3D Explorer</span>
+    </div>
+    <div class="header-actions">
+      <!-- Auto Spin Toggle -->
+      <button class="action-btn active" id="btnAutoSpin" title="Toggle Auto-Rotation">
+        <i data-lucide="rotate-cw" style="width: 16px; height: 16px;"></i>
+      </button>
+      <!-- Day / Night Earth Lighting Toggle -->
+      <button class="action-btn" id="btnGlobeTheme" title="Toggle Day / Night Earth Lighting">
+        <i data-lucide="moon" id="themeIcon" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Real-Time Attached Pictures Bar for Origin & Destination -->
+  <div class="trip-photos-bar">
+    <div class="trip-card-item">
+      <img id="barOriginImg" class="trip-thumb origin" src="" alt="Origin" />
+      <div class="trip-info">
+        <div class="trip-type" style="color: var(--start-color);">Origin</div>
+        <div class="trip-city" id="barOriginCity">London</div>
+        <div class="trip-sub" id="barOriginSub">England, UK</div>
+      </div>
+    </div>
+
+    <div class="flight-separator">
+      <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
+      <span style="font-size: 8px; font-weight:700; opacity:0.8;">ROUTE</span>
+    </div>
+
+    <div class="trip-card-item" style="justify-content: flex-end; text-align: right;">
+      <div class="trip-info">
+        <div class="trip-type" style="color: var(--dest-color);">Destination</div>
+        <div class="trip-city" id="barDestCity">Paris</div>
+        <div class="trip-sub" id="barDestSub">Île-de-France, FR</div>
+      </div>
+      <img id="barDestImg" class="trip-thumb dest" src="" alt="Destination" />
+    </div>
+  </div>
+
+  <!-- Search Filter -->
+  <div class="search-filter-box">
+    <i data-lucide="search" class="search-icon" style="width: 15px; height: 15px;"></i>
+    <input type="text" id="citySearch" placeholder="Search City, State, or Country..." />
+  </div>
+
+  <div class="form-group">
+    <label><i data-lucide="map-pin" style="width: 14px; height: 14px; color: var(--start-color);"></i> Origin (City, State, Country)</label>
+    <div class="select-box">
+      <select id="startSelect"></select>
+      <i data-lucide="chevron-down" class="select-arrow" style="width: 16px; height: 16px;"></i>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label><i data-lucide="flag" style="width: 14px; height: 14px; color: var(--dest-color);"></i> Destination (City, State, Country)</label>
+    <div class="select-box">
+      <select id="destSelect"></select>
+      <i data-lucide="chevron-down" class="select-arrow" style="width: 16px; height: 16px;"></i>
+    </div>
+  </div>
+
+  <!-- Route Telemetry HUD -->
+  <div class="route-hud">
+    <div class="hud-title">
+      <span>Route Telemetry</span>
+      <span class="hud-badge">DIRECT ROUTE</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Total Distance</span>
+      <span class="hud-val" id="hudDistance">-- km</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Est. Flight Duration</span>
+      <span class="hud-val" id="hudFlightTime">-- hrs</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Origin Point</span>
+      <span class="hud-val" id="hudOriginName" style="color: var(--start-color);">--</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Destination Point</span>
+      <span class="hud-val" id="hudDestName" style="color: var(--dest-color);">--</span>
+    </div>
+  </div>
+
+  <button class="btn-frame-route" id="btnFrameRoute">
+    <i data-lucide="crosshair" style="width: 16px; height: 16px;"></i>
+    <span>Frame Route On Globe</span>
+  </button>
+</div>
+
+<!-- Hover Indicator for Country Borders -->
+<div class="country-hud" id="countryHud">
+  <i data-lucide="flag" style="width: 16px; height: 16px; color: var(--accent);"></i>
+  <span id="countryHudName">Country Name</span>
+</div>
+
+<!-- Zoom Level Indicator -->
+<div class="zoom-level-hud" id="zoomLevelHud">
+  <i data-lucide="layers" style="width: 14px; height: 14px; color: var(--accent);"></i>
+  <span id="zoomLevelText">🌍 World View — All Countries</span>
+</div>
+
+<!-- Dynamic Hover Card for 3D City Landmarks with Images -->
+<div class="hover-card" id="hoverCard">
+  <div class="hover-img-wrap">
+    <img id="cardImage" src="" alt="" />
+    <div class="hover-badge" id="cardLandmark"></div>
+  </div>
+  <div class="hover-content">
+    <div class="hover-header">
+      <h3 class="hover-title" id="cardCity"></h3>
+      <span id="cardRole" style="font-size: 10px; font-weight:700; padding:2px 7px; border-radius:10px;"></span>
+    </div>
+    <div class="hover-location">
+      <i data-lucide="map-pin" style="width: 14px; height: 14px;"></i>
+      <span id="cardLocation"></span>
+    </div>
+    <div class="hover-quote" id="cardQuote"></div>
+    <div class="hover-coords" id="cardCoords"></div>
+  </div>
+</div>
+
+<!-- Camera Navigation Hints -->
+<div class="view-hints">
+  <div class="hint-item">
+    <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent);"></i>
+    <span>Scroll to zoom · Countries → States → Cities progressively appear</span>
+  </div>
+  <div class="hint-item">
+    <span>Drag</span> to rotate
+  </div>
+</div>
+
+<!-- Separate Data Files (Instant, Zero-Lag Loading) -->
+<script src="data/countries.js"></script>
+<script src="data/states.js"></script>
+<script src="data/cities.js"></script>
+
+<!-- Landmark Cities & Application Logic -->
+<script src="js/cities-landmarks.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

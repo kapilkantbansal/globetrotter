@@ -39,9 +39,13 @@ export interface City {
   id: number;
   name: string;
   country: string;
-  region?: string;
+  region?: string | undefined;
   cost_index: number;
   popularity: number;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  image_url?: string | null | undefined;
+  description?: string | null | undefined;
 }
 
 export interface GeoCitySearchResult {
@@ -58,20 +62,20 @@ export interface GeoCitySearchResult {
 }
 
 export interface CityDetail {
-  id?: number | null;
+  id?: number | null | undefined;
   name: string;
-  state?: string | null;
+  state?: string | null | undefined;
   country: string;
-  country_code?: string | null;
-  emoji?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  population?: number | null;
-  timezone?: string | null;
+  country_code?: string | null | undefined;
+  emoji?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  population?: number | null | undefined;
+  timezone?: string | null | undefined;
   cost_index: number;
   popularity: number;
-  image_url?: string | null;
-  description?: string | null;
+  image_url?: string | null | undefined;
+  description?: string | null | undefined;
 }
 
 export interface Activity {

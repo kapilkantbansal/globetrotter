@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { TripPicker } from "@/components/TripPicker";
-import { loadTrips } from "@/lib/tripStore";
+import { loadTrips, getActiveTripId, setActiveTripId } from "@/lib/tripStore";
 import { getMyTrips } from "@/api/tripsApi";
 import { searchGeoCities, getCityDetails } from "@/api/citiesApi";
 import { USE_FAKE_DATA } from "@/config";
@@ -370,27 +370,32 @@ function CitiesPage() {
 
   // Load trips
   useEffect(() => {
-    if (USE_FAKE_DATA) {
-      const list = loadTrips();
+    function pickInitialTrip(list: TripListItem[]) {
       setTrips(list);
-      if (list.length) setTripId(list[0]!.id);
+      if (list.length > 0) {
+        const savedId = getActiveTripId();
+        const found = list.find((t) => t.id === savedId);
+        setTripId(found ? found.id : list[0]!.id);
+      }
+    }
+
+    if (USE_FAKE_DATA) {
+      pickInitialTrip(loadTrips());
       return;
     }
     getMyTrips()
       .then((res) => {
-        setTrips(res.data);
-        if (res.data.length) setTripId(res.data[0]!.id);
+        pickInitialTrip(res.data);
       })
       .catch(() => {
-        const list = loadTrips();
-        setTrips(list);
-        if (list.length) setTripId(list[0]!.id);
+        pickInitialTrip(loadTrips());
       });
   }, []);
 
-  // Load stops for selected trip
+  // Load stops for selected trip and persist active trip ID
   useEffect(() => {
     if (tripId != null) {
+      setActiveTripId(tripId);
       const s = loadStops(tripId);
       setStops(s);
     }
@@ -541,6 +546,10 @@ function CitiesPage() {
         cost_index: 5,
         popularity: 7,
         region: res.data.state ?? res.data.country,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+        image_url: res.data.image_url,
+        description: res.data.description,
       };
       const updated: StoredStop[] = [...currentStops];
       if (updated.length > 0) {
@@ -554,8 +563,13 @@ function CitiesPage() {
           activity_ids: [],
         });
       }
-      setStops(updated);
-      saveStops(tripId, updated);
+      // Deduplicate consecutive identical stops
+      const cleaned = updated.filter((s, idx, arr) => {
+        if (idx === 0) return true;
+        return s.city.name.toLowerCase().trim() !== arr[idx - 1]!.city.name.toLowerCase().trim();
+      });
+      setStops(cleaned);
+      saveStops(tripId, cleaned);
       toast.success(`Start city changed to ${res.data.name}!`);
     } catch {
       toast.error("Failed to update start city");
@@ -580,6 +594,10 @@ function CitiesPage() {
         cost_index: 5,
         popularity: 7,
         region: res.data.state ?? res.data.country,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+        image_url: res.data.image_url,
+        description: res.data.description,
       };
       const updated: StoredStop[] = [...currentStops];
       if (updated.length > 1) {
@@ -593,8 +611,12 @@ function CitiesPage() {
           activity_ids: [],
         });
       }
-      setStops(updated);
-      saveStops(tripId, updated);
+      const cleaned = updated.filter((s, idx, arr) => {
+        if (idx === 0) return true;
+        return s.city.name.toLowerCase().trim() !== arr[idx - 1]!.city.name.toLowerCase().trim();
+      });
+      setStops(cleaned);
+      saveStops(tripId, cleaned);
       toast.success(`Final destination changed to ${res.data.name}!`);
     } catch {
       toast.error("Failed to update final destination");
@@ -618,6 +640,10 @@ function CitiesPage() {
         cost_index: 5,
         popularity: 7,
         region: res.data.state ?? res.data.country,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+        image_url: res.data.image_url,
+        description: res.data.description,
       };
       const newStop: StoredStop = {
         id: newStopId(),
@@ -628,8 +654,12 @@ function CitiesPage() {
       };
       const updated = [...currentStops];
       updated.splice(index + 1, 0, newStop);
-      setStops(updated);
-      saveStops(tripId, updated);
+      const cleaned = updated.filter((s, idx, arr) => {
+        if (idx === 0) return true;
+        return s.city.name.toLowerCase().trim() !== arr[idx - 1]!.city.name.toLowerCase().trim();
+      });
+      setStops(cleaned);
+      saveStops(tripId, cleaned);
       toast.success(`${res.data.name} added as intermediate stop!`);
     } catch {
       toast.error("Failed to add stop");
@@ -655,6 +685,10 @@ function CitiesPage() {
       cost_index: 5,
       popularity: 7,
       region: detail.state ?? detail.country,
+      latitude: detail.latitude,
+      longitude: detail.longitude,
+      image_url: detail.image_url,
+      description: detail.description,
     };
 
     const next: StoredStop[] = [
@@ -668,8 +702,13 @@ function CitiesPage() {
       },
     ];
 
-    setStops(next);
-    saveStops(tripId, next);
+    const cleaned = next.filter((s, idx, arr) => {
+      if (idx === 0) return true;
+      return s.city.name.toLowerCase().trim() !== arr[idx - 1]!.city.name.toLowerCase().trim();
+    });
+
+    setStops(cleaned);
+    saveStops(tripId, cleaned);
     toast.success(`${detail.name} added to ${trip.name} destinations!`);
   }
 
@@ -711,6 +750,10 @@ function CitiesPage() {
 
     const nextStops: StoredStop[] = [];
     routeCities.forEach((c) => {
+      const last = nextStops[nextStops.length - 1];
+      if (last && last.city.name.toLowerCase().trim() === c.name.toLowerCase().trim()) {
+        return;
+      }
       nextStops.push({
         id: newStopId(),
         city: {
@@ -720,6 +763,10 @@ function CitiesPage() {
           cost_index: 5,
           popularity: 7,
           region: c.state ?? c.country,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          image_url: c.image_url,
+          description: c.description,
         },
         start_date: trip.start_date,
         end_date: trip.end_date,

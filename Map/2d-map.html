@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Route Explorer — Leaflet Interactive Map</title>
+
+  <!-- Leaflet 1.9.4 CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="css/2d-map.css" />
+</head>
+<body>
+
+<!-- 2D Leaflet Map Container -->
+<div id="map"></div>
+
+<!-- Top Center: ONLY Street & Satellite Mode (100% English Global Labels) -->
+<div class="layer-selector">
+  <button class="layer-opt active" id="layerStreet" title="Street Map with 100% English Labels Worldwide">
+    <i data-lucide="map" style="width: 14px; height: 14px;"></i>
+    <span>Street (English)</span>
+  </button>
+  <button class="layer-opt" id="layerSatellite" title="Satellite Imagery with English Labels & Borders">
+    <i data-lucide="satellite" style="width: 14px; height: 14px;"></i>
+    <span>Satellite (English)</span>
+  </button>
+</div>
+
+<!-- Top Right: Direct Link to 3D Globe -->
+<a href="3d-map.html" class="switch-mode-btn" id="linkTo3D" title="Open in 3D Interactive Globe">
+  <i data-lucide="globe" style="width: 18px; height: 18px; color: var(--accent);"></i>
+  <span>Switch to 3D Globe</span>
+</a>
+
+<!-- Left Control & Route Panel -->
+<div class="control-panel">
+  <div class="panel-header">
+    <div class="panel-brand">
+      <i data-lucide="navigation" style="width: 22px; height: 22px;"></i>
+      <span>2D Route Navigator</span>
+    </div>
+    <div class="header-actions">
+      <!-- Locate button -->
+      <button class="action-btn" id="btnLocate" title="Center on My Location">
+        <i data-lucide="crosshair" style="width: 16px; height: 16px;"></i>
+      </button>
+      <!-- Demo Marker popup button -->
+      <button class="action-btn" id="btnDemoPopup" title="Show Pretty Popup Demo">
+        <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Real-Time Attached Pictures Bar for Origin & Destination -->
+  <div class="trip-photos-bar">
+    <div class="trip-card-item">
+      <img id="barOriginImg" class="trip-thumb origin" src="" alt="Origin" />
+      <div class="trip-info">
+        <div class="trip-type" style="color: var(--start-color);">Origin</div>
+        <div class="trip-city" id="barOriginCity">London</div>
+        <div class="trip-sub" id="barOriginSub">England, UK</div>
+      </div>
+    </div>
+
+    <div class="flight-separator">
+      <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
+      <span style="font-size: 8px; font-weight:700; opacity:0.8;">ROUTE</span>
+    </div>
+
+    <div class="trip-card-item" style="justify-content: flex-end; text-align: right;">
+      <div class="trip-info">
+        <div class="trip-type" style="color: var(--dest-color);">Destination</div>
+        <div class="trip-city" id="barDestCity">Paris</div>
+        <div class="trip-sub" id="barDestSub">Île-de-France, FR</div>
+      </div>
+      <img id="barDestImg" class="trip-thumb dest" src="" alt="Destination" />
+    </div>
+  </div>
+
+  <!-- Search Filter -->
+  <div class="search-filter-box">
+    <i data-lucide="search" class="search-icon" style="width: 15px; height: 15px;"></i>
+    <input type="text" id="citySearch" placeholder="Search City, State, or Country..." />
+  </div>
+
+  <div class="form-group">
+    <label><i data-lucide="map-pin" style="width: 14px; height: 14px; color: var(--start-color);"></i> Origin (City, State, Country)</label>
+    <div class="select-box">
+      <select id="startSelect"></select>
+      <i data-lucide="chevron-down" class="select-arrow" style="width: 16px; height: 16px;"></i>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label><i data-lucide="flag" style="width: 14px; height: 14px; color: var(--dest-color);"></i> Destination (City, State, Country)</label>
+    <div class="select-box">
+      <select id="destSelect"></select>
+      <i data-lucide="chevron-down" class="select-arrow" style="width: 16px; height: 16px;"></i>
+    </div>
+  </div>
+
+  <!-- Route Telemetry HUD -->
+  <div class="route-hud">
+    <div class="hud-title">
+      <span>Route Telemetry</span>
+      <span class="hud-badge">2D LEAFLET</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Total Distance</span>
+      <span class="hud-val" id="hudDistance">-- km</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Est. Flight Duration</span>
+      <span class="hud-val" id="hudFlightTime">-- hrs</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Origin Point</span>
+      <span class="hud-val" id="hudOriginName" style="color: var(--start-color);">--</span>
+    </div>
+    <div class="hud-row">
+      <span class="hud-key">Destination Point</span>
+      <span class="hud-val" id="hudDestName" style="color: var(--dest-color);">--</span>
+    </div>
+  </div>
+
+  <button class="btn-frame-route" id="btnFrameRoute">
+    <i data-lucide="maximize-2" style="width: 16px; height: 16px;"></i>
+    <span>Fit Route To Screen</span>
+  </button>
+</div>
+
+<!-- Camera Hints -->
+<div class="view-hints">
+  <div class="hint-item">
+    <i data-lucide="languages" style="width: 14px; height: 14px; color: var(--accent);"></i>
+    <span>All Names Strictly in English</span>
+  </div>
+  <div class="hint-item">
+    <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent);"></i>
+    <span>Click city markers for customizable CSS popup</span>
+  </div>
+  <div class="hint-item">
+    <span>Scroll</span> to zoom
+  </div>
+</div>
+
+<!-- Load Landmark Cities Database -->
+<script src="js/cities-landmarks.js"></script>
+
+<!-- Main Map Application Logic -->
+<script src="js/2d-map.js"></script>
+
+</body>
+</html>

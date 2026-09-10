@@ -14,7 +14,7 @@ import { Navbar } from "@/components/Navbar";
 import { TripCalendar } from "@/components/TripCalendar";
 import { USE_FAKE_DATA } from "@/config";
 import { getMyTrips, deleteTrip } from "@/api/tripsApi";
-import { loadTrips, saveTrips, tripDays } from "@/lib/tripStore";
+import { loadTrips, saveTrips, tripDays, getActiveTripId, setActiveTripId } from "@/lib/tripStore";
 import { loadStops } from "@/lib/itineraryStore";
 import type { TripListItem } from "@/api/types";
 
@@ -25,12 +25,13 @@ export const Route = createFileRoute("/trips")({
       {
         name: "description",
         content:
-          "All your GlobeTrotter trips in one list: dates, stop counts, and quick edit, duplicate or delete actions.",
+          "Manage your travel itineraries, view interactive trip calendars, and customize planned destinations.",
       },
       { property: "og:title", content: "My Trips — GlobeTrotter" },
       {
         property: "og:description",
-        content: "Manage every trip you've planned — dates, stops and actions.",
+        content:
+          "Manage your travel itineraries, view interactive trip calendars, and customize planned destinations.",
       },
     ],
   }),
@@ -61,19 +62,31 @@ function TripsPage() {
   const [draftName, setDraftName] = useState("");
 
   useEffect(() => {
-    if (USE_FAKE_DATA) {
-      const list = loadTrips();
+    function pickInitial(list: TripListItem[]) {
       setTrips(list);
-      if (list.length > 0) setSelectedId(list[0].id);
+      if (list.length > 0) {
+        const saved = getActiveTripId();
+        const found = list.find((t) => t.id === saved);
+        setSelectedId(found ? found.id : list[0]!.id);
+      }
+    }
+
+    if (USE_FAKE_DATA) {
+      pickInitial(loadTrips());
       return;
     }
     getMyTrips()
       .then((res) => {
-        setTrips(res.data);
-        if (res.data.length > 0) setSelectedId(res.data[0].id);
+        pickInitial(res.data);
       })
       .catch((err: Error) => toast.error(err.message));
   }, []);
+
+  useEffect(() => {
+    if (selectedId != null) {
+      setActiveTripId(selectedId);
+    }
+  }, [selectedId]);
 
   function persist(next: TripListItem[]) {
     setTrips(next);

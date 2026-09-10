@@ -1,49 +1,87 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, Component, type ErrorInfo, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { toast } from "sonner";
-import {
-  ArrowDown,
-  ArrowUp,
-  CalendarDays,
-  Check,
-  MapPin,
-  Plus,
-  Trash2,
-  Wallet,
-} from "lucide-react";
 import { Navbar } from "@/components/Navbar";
-import { TripPicker } from "@/components/TripPicker";
-import { CityMap } from "@/components/CityMap";
-import { loadTrips } from "@/lib/tripStore";
-import {
-  activityById,
-  inr,
-  loadStops,
-  newStopId,
-  saveStops,
-  stopCost,
-  stopNights,
-  tripBudget,
-  type StoredStop,
-} from "@/lib/itineraryStore";
-import { fakeCities } from "@/data/fakeCities";
-import { fakeActivities } from "@/data/fakeActivities";
+import { GlobeMap } from "@/components/GlobeMap";
+import { Map2D } from "@/components/Map2D";
+
+interface MapErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface MapErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class MapErrorBoundary extends Component<MapErrorBoundaryProps, MapErrorBoundaryState> {
+  constructor(props: MapErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.warn("Map view error caught:", error, errorInfo);
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center bg-slate-950 p-6 text-center text-white">
+          <div className="rounded-2xl border border-sky-500/30 bg-slate-900/90 p-6 max-w-md shadow-2xl backdrop-blur-xl">
+            <h3 className="text-base font-bold text-white">Map View Reloading</h3>
+            <p className="mt-1 text-xs text-gray-300">
+              {this.state.error?.message || "An issue occurred initializing the interactive map."}
+            </p>
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="mt-4 rounded-xl bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400 transition-all shadow-md"
+            >
+              Reload Map View
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+import { getActiveTripId, loadTrips, setActiveTripId } from "@/lib/tripStore";
+import { getMyTrips } from "@/api/tripsApi";
+import { USE_FAKE_DATA } from "@/config";
+import { loadStops, type StoredStop } from "@/lib/itineraryStore";
 import type { TripListItem } from "@/api/types";
+import {
+  CalendarDays,
+  Compass,
+  Globe,
+  MapPin,
+  Navigation,
+  Flag,
+  ArrowRight,
+  ExternalLink,
+  PlusCircle,
+  Sparkles,
+} from "lucide-react";
 
 export const Route = createFileRoute("/itinerary-builder")({
   head: () => ({
     meta: [
-      { title: "Itinerary Builder — GlobeTrotter" },
+      { title: "Trip Route Explorer (3D & 2D) — GlobeTrotter" },
       {
         name: "description",
         content:
-          "Build your day-wise plan: add stops, pick cities and dates, assign activities and reorder the route.",
+          "Explore your travel journey in 3D spherical globe and 2D high-detail street & satellite map with verified country borders and flight routes.",
       },
-      { property: "og:title", content: "Itinerary Builder — GlobeTrotter" },
+      { property: "og:title", content: "Trip Route Explorer (3D & 2D) — GlobeTrotter" },
       {
         property: "og:description",
         content:
-          "Add stops, set city dates, assign activities and reorder your multi-city route.",
+          "Explore your travel journey in 3D spherical globe and 2D high-detail street & satellite map with verified country borders and flight routes.",
       },
     ],
   }),
@@ -54,384 +92,277 @@ function BuilderPage() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [tripId, setTripId] = useState<number | null>(null);
   const [stops, setStops] = useState<StoredStop[]>([]);
+  const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
 
-  const [cityId, setCityId] = useState<number>(fakeCities[0]!.id);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-
+  // Fetch trips from database (getMyTrips API) or local store
   useEffect(() => {
-    const list = loadTrips();
-    setTrips(list);
-    if (list.length) setTripId(list[0]!.id);
+    async function initTrips() {
+      let list: TripListItem[] = [];
+      if (USE_FAKE_DATA) {
+        list = loadTrips();
+      } else {
+        try {
+          const res = await getMyTrips();
+          list = res.data;
+        } catch {
+          list = loadTrips();
+        }
+      }
+      setTrips(list);
+
+      if (list.length > 0) {
+        const savedActiveId = getActiveTripId();
+        const found = list.find((t) => t.id === savedActiveId);
+        const chosenId = found ? found.id : list[0]!.id;
+        setTripId(chosenId);
+      }
+    }
+
+    initTrips();
   }, []);
 
+  // Load stops whenever tripId changes and persist active trip
   useEffect(() => {
-    if (tripId == null) return;
+    if (tripId == null) {
+      setStops([]);
+      return;
+    }
+    setActiveTripId(tripId);
     setStops(loadStops(tripId));
-    const trip = trips.find((t) => t.id === tripId);
-    if (trip) {
-      setStart(trip.start_date);
-      setEnd(trip.start_date);
-    }
-  }, [tripId, trips]);
+  }, [tripId]);
 
-  const trip = trips.find((t) => t.id === tripId) ?? null;
-  const budget = useMemo(() => tripBudget(stops), [stops]);
-
-  function persist(next: StoredStop[]) {
-    setStops(next);
-    if (tripId != null) saveStops(tripId, next);
-  }
-
-  function handleAddStop() {
-    if (tripId == null) return;
-    if (!start || !end) {
-      toast.error("Pick the arrival and departure dates");
-      return;
-    }
-    if (end < start) {
-      toast.error("Departure must be on or after arrival");
-      return;
-    }
-    const city = fakeCities.find((c) => c.id === cityId)!;
-    persist([
-      ...stops,
-      {
-        id: newStopId(),
-        city,
-        start_date: start,
-        end_date: end,
-        activity_ids: [],
-      },
-    ]);
-    toast.success(`${city.name} added to the route`);
-  }
-
-  function move(index: number, dir: -1 | 1) {
-    const target = index + dir;
-    if (target < 0 || target >= stops.length) return;
-    const next = [...stops];
-    const [item] = next.splice(index, 1);
-    next.splice(target, 0, item!);
-    persist(next);
-  }
-
-  function removeStop(id: string) {
-    persist(stops.filter((s) => s.id !== id));
-  }
-
-  function toggleActivity(stopId: string, activityId: number) {
-    persist(
-      stops.map((s) =>
-        s.id === stopId
-          ? {
-              ...s,
-              activity_ids: s.activity_ids.includes(activityId)
-                ? s.activity_ids.filter((a) => a !== activityId)
-                : [...s.activity_ids, activityId],
-            }
-          : s,
-      ),
-    );
-  }
-
-  function updateDates(stopId: string, patch: Partial<StoredStop>) {
-    persist(stops.map((s) => (s.id === stopId ? { ...s, ...patch } : s)));
-  }
-
-  const fieldClass =
-    "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25";
+  const activeTrip = trips.find((t) => t.id === tripId) ?? null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen w-full bg-[#020617] text-white">
       <Navbar />
 
-      <main className="mx-auto max-w-6xl px-5 py-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-primary">
-          Step 2 of 3
-        </p>
-        <h1 className="mt-2 text-4xl font-extrabold sm:text-5xl">
-          Itinerary <span className="text-gradient-sunset">Builder</span>
-        </h1>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
-          Add a stop for every city, set the dates you'll be there, tick the
-          activities you want and drag the order around until it flows.
-        </p>
+      {/* Main Container with generous spacing around the map */}
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 pb-20">
+        {/* Top Header Controls Bar: Active Trip Selector + View Mode Switcher */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-slate-950/70 p-4 shadow-xl backdrop-blur-xl">
+          {/* Trip Branding / Title */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/30">
+              <Compass className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-sky-400">
+                  Route Explorer
+                </span>
+                {activeTrip && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-gray-300">
+                    {activeTrip.start_date} → {activeTrip.end_date}
+                  </span>
+                )}
+              </div>
+              <h1 className="text-lg sm:text-xl font-extrabold text-white">
+                {activeTrip ? activeTrip.name : "Select an Active Trip"}
+              </h1>
+            </div>
+          </div>
 
-        <div className="mt-8">
-          <CityMap
-            cities={fakeCities}
-            selectedId={cityId}
-            onSelect={(city) => {
-              setCityId(city.id);
-              toast.success(`${city.name} selected — set the dates and add it`);
-            }}
-            routeIds={stops.map((s) => s.city.id)}
-          />
+          {/* Controls: Active Trip Dropdown & 3D / 2D Switcher */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Active Trip Picker */}
+            <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/90 px-3 py-1.5 shadow-md">
+              <label
+                htmlFor="trip-select-dropdown"
+                className="text-xs font-bold uppercase tracking-wider text-sky-400"
+              >
+                Trip:
+              </label>
+              <select
+                id="trip-select-dropdown"
+                value={tripId ?? ""}
+                onChange={(e) => {
+                  const newId = Number(e.target.value);
+                  setTripId(newId);
+                  setActiveTripId(newId);
+                }}
+                className="rounded-lg border border-white/15 bg-slate-800 px-2.5 py-1 text-xs font-bold text-white outline-none focus:border-sky-400"
+              >
+                {trips.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* View Mode Toggle: [ 🌍 3D Globe | 🗺️ 2D Map ] */}
+            <div className="flex items-center rounded-2xl border border-white/15 bg-slate-900/90 p-1 shadow-md">
+              <button
+                type="button"
+                onClick={() => setViewMode("3d")}
+                className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "3d"
+                    ? "bg-sky-500 text-slate-950 shadow-md"
+                    : "text-gray-300 hover:text-white"
+                }`}
+                title="Switch to 3D World Globe"
+              >
+                <Globe className="size-3.5" />
+                <span>3D Globe</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("2d")}
+                className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  viewMode === "2d"
+                    ? "bg-sky-500 text-slate-950 shadow-md"
+                    : "text-gray-300 hover:text-white"
+                }`}
+                title="Switch to 2D Route Map"
+              >
+                <MapPin className="size-3.5" />
+                <span>2D Map</span>
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[320px_1fr]">
-          <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-            <TripPicker trips={trips} value={tripId} onChange={setTripId} />
+        {/* Map Viewport Card Frame (with generous space/margins around it) */}
+        <div className="relative h-[720px] sm:h-[760px] w-full rounded-3xl border border-white/15 bg-slate-950/80 shadow-2xl backdrop-blur-xl overflow-hidden">
+          <MapErrorBoundary>
+            <div className={`h-full w-full ${viewMode === "3d" ? "block" : "hidden"}`}>
+              <GlobeMap
+                stops={stops}
+                tripName={activeTrip?.name}
+                tripDates={
+                  activeTrip
+                    ? `${activeTrip.start_date} → ${activeTrip.end_date}`
+                    : undefined
+                }
+                onSwitchTo2D={() => setViewMode("2d")}
+                isActive={viewMode === "3d"}
+              />
+            </div>
+            <div className={`h-full w-full ${viewMode === "2d" ? "block" : "hidden"}`}>
+              <Map2D
+                stops={stops}
+                tripName={activeTrip?.name}
+                tripDates={
+                  activeTrip
+                    ? `${activeTrip.start_date} → ${activeTrip.end_date}`
+                    : undefined
+                }
+                onSwitchTo3D={() => setViewMode("3d")}
+                isActive={viewMode === "2d"}
+              />
+            </div>
+          </MapErrorBoundary>
+        </div>
 
-            {trip ? (
-              <section className="rounded-2xl border border-border bg-card p-5 shadow-lift">
-                <h2 className="flex items-center gap-2 font-display text-lg font-bold">
-                  <Plus className="size-4 text-primary" />
-                  Add stop
-                </h2>
-                <div className="mt-4 space-y-3">
-                  <div className="space-y-1.5">
-                    <label htmlFor="stop-city" className="text-xs font-semibold">
-                      City
-                    </label>
-                    <select
-                      id="stop-city"
-                      value={cityId}
-                      onChange={(e) => setCityId(Number(e.target.value))}
-                      className={fieldClass}
-                    >
-                      {fakeCities.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}, {c.country}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label htmlFor="stop-start" className="text-xs font-semibold">
-                        Arrive
-                      </label>
-                      <input
-                        id="stop-start"
-                        type="date"
-                        value={start}
-                        min={trip.start_date}
-                        max={trip.end_date}
-                        onChange={(e) => setStart(e.target.value)}
-                        className={fieldClass}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label htmlFor="stop-end" className="text-xs font-semibold">
-                        Depart
-                      </label>
-                      <input
-                        id="stop-end"
-                        type="date"
-                        value={end}
-                        min={start || trip.start_date}
-                        max={trip.end_date}
-                        onChange={(e) => setEnd(e.target.value)}
-                        className={fieldClass}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAddStop}
-                    className="gradient-sunset inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold uppercase tracking-[0.15em] text-primary-foreground shadow-lift transition active:scale-[0.98]"
-                  >
-                    <Plus className="size-4" />
-                    Add stop
-                  </button>
-                  <Link
-                    to="/cities"
-                    className="block text-center text-xs font-semibold text-primary hover:underline"
-                  >
-                    Browse all cities & budget →
-                  </Link>
-                </div>
-              </section>
-            ) : null}
-
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <h2 className="flex items-center gap-2 font-display text-lg font-bold">
-                <Wallet className="size-4 text-primary" />
-                Running budget
+        {/* Page Scroll Section Below the Map */}
+        <div className="mt-12 space-y-8">
+          {/* Section Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                <Navigation className="size-5 text-sky-400" />
+                <span>Journey Itinerary & Destination Sequence</span>
               </h2>
-              <p className="mt-2 text-3xl font-extrabold text-gradient-sunset">
-                {inr(budget.total)}
+              <p className="mt-1 text-xs sm:text-sm text-gray-400">
+                Explore each planned waypoint, departure city, and final destination in chronological order.
               </p>
-              <p className="text-xs text-muted-foreground">
-                {budget.days} days · {inr(budget.avgPerDay)} / day
-              </p>
-              <dl className="mt-4 space-y-2 text-sm">
-                {(
-                  [
-                    ["Activities", budget.activities],
-                    ["Stay", budget.stay],
-                    ["Transport", budget.transport],
-                    ["Meals", budget.meals],
-                  ] as const
-                ).map(([label, value]) => (
-                  <div key={label} className="flex justify-between">
-                    <dt className="text-muted-foreground">{label}</dt>
-                    <dd className="font-semibold">{inr(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          </aside>
+            </div>
+            <Link
+              to="/cities"
+              className="inline-flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-xs font-bold text-sky-400 transition hover:bg-sky-500/25"
+            >
+              <PlusCircle className="size-4" />
+              <span>Customize Destinations in 2D</span>
+            </Link>
+          </div>
 
-          <section className="space-y-4">
-            {stops.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-border bg-card p-12 text-center">
-                <MapPin className="mx-auto size-8 text-muted-foreground" />
-                <p className="mt-3 font-display text-lg font-bold">
-                  No stops yet
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Add your first city on the left to start the route.
-                </p>
-              </div>
-            ) : null}
+          {/* Stops Sequence Grid */}
+          {stops.length > 0 ? (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {stops.map((stop, idx) => {
+                const isOrigin = idx === 0;
+                const isDest = idx === stops.length - 1 && stops.length > 1;
+                const badgeColor = isOrigin
+                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  : isDest
+                  ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                  : "bg-sky-500/20 text-sky-400 border-sky-500/30";
+                const roleText = isOrigin
+                  ? "Origin Point"
+                  : isDest
+                  ? "Final Destination"
+                  : `Intermediate Stop #${idx}`;
 
-            {stops.map((stop, index) => (
-              <article
-                key={stop.id}
-                className="rounded-3xl border border-border bg-card p-5 shadow-lift transition hover:border-primary/40"
-              >
-                <header className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="gradient-sunset flex size-10 items-center justify-center rounded-2xl font-display text-sm font-bold text-primary-foreground">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <h3 className="font-display text-xl font-bold">
+                return (
+                  <article
+                    key={stop.id || `stop-${idx}`}
+                    className="group relative overflow-hidden rounded-3xl border border-white/15 bg-slate-950/70 p-5 shadow-xl backdrop-blur-xl transition hover:border-sky-500/40"
+                  >
+                    {/* Header with badge */}
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${badgeColor}`}
+                      >
+                        {roleText}
+                      </span>
+                      <span className="text-xs font-bold text-gray-400">
+                        Stop {idx + 1} of {stops.length}
+                      </span>
+                    </div>
+
+                    {/* City Info */}
+                    <div className="mt-4">
+                      <h3 className="text-lg font-bold text-white group-hover:text-sky-400 transition">
                         {stop.city.name}
                       </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {stop.city.country} · {stopNights(stop)} days ·{" "}
-                        {inr(stopCost(stop))} activities
+                      <p className="text-xs text-gray-400">
+                        {stop.city.region
+                          ? `${stop.city.region}, ${stop.city.country}`
+                          : stop.city.country}
                       </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => move(index, -1)}
-                      aria-label={`Move ${stop.city.name} earlier`}
-                      disabled={index === 0}
-                      className="rounded-full border border-border p-2 transition hover:bg-secondary disabled:opacity-40"
-                    >
-                      <ArrowUp className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => move(index, 1)}
-                      aria-label={`Move ${stop.city.name} later`}
-                      disabled={index === stops.length - 1}
-                      className="rounded-full border border-border p-2 transition hover:bg-secondary disabled:opacity-40"
-                    >
-                      <ArrowDown className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => removeStop(stop.id)}
-                      aria-label={`Remove ${stop.city.name}`}
-                      className="rounded-full border border-border p-2 text-destructive transition hover:bg-destructive/10"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </header>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor={`${stop.id}-start`}
-                      className="text-xs font-semibold"
-                    >
-                      <CalendarDays className="mr-1 inline size-3.5 text-primary" />
-                      Arrive
-                    </label>
-                    <input
-                      id={`${stop.id}-start`}
-                      type="date"
-                      value={stop.start_date}
-                      onChange={(e) =>
-                        updateDates(stop.id, { start_date: e.target.value })
-                      }
-                      className={fieldClass}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor={`${stop.id}-end`}
-                      className="text-xs font-semibold"
-                    >
-                      <CalendarDays className="mr-1 inline size-3.5 text-primary" />
-                      Depart
-                    </label>
-                    <input
-                      id={`${stop.id}-end`}
-                      type="date"
-                      value={stop.end_date}
-                      min={stop.start_date}
-                      onChange={(e) =>
-                        updateDates(stop.id, { end_date: e.target.value })
-                      }
-                      className={fieldClass}
-                    />
-                  </div>
-                </div>
+                    {/* Coordinates & Dates */}
+                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                      {stop.city.latitude && stop.city.longitude ? (
+                        <span className="rounded-xl bg-white/5 px-2.5 py-1">
+                          📍 {Number(stop.city.latitude).toFixed(2)}°, {Number(stop.city.longitude).toFixed(2)}°
+                        </span>
+                      ) : null}
+                      <span className="rounded-xl bg-white/5 px-2.5 py-1">
+                        🗓️ {stop.start_date} → {stop.end_date}
+                      </span>
+                    </div>
 
-                <div className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Activities
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {fakeActivities.map((a) => {
-                      const on = stop.activity_ids.includes(a.id);
-                      return (
-                        <button
-                          key={a.id}
-                          onClick={() => toggleActivity(stop.id, a.id)}
-                          aria-pressed={on}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                            on
-                              ? "gradient-sunset border-transparent text-primary-foreground"
-                              : "border-border hover:bg-secondary"
-                          }`}
-                        >
-                          {on ? <Check className="size-3.5" /> : null}
-                          {a.name}
-                          <span className="opacity-70">
-                            {a.cost ? inr(a.cost) : "Free"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {stop.activity_ids.length ? (
-                    <ul className="mt-4 space-y-1.5 text-sm text-muted-foreground">
-                      {stop.activity_ids.map((id) => {
-                        const a = activityById(id);
-                        if (!a) return null;
-                        return (
-                          <li key={id} className="flex justify-between">
-                            <span>
-                              {a.name} · {a.duration_hours}h
-                            </span>
-                            <span className="font-semibold text-foreground">
-                              {a.cost ? inr(a.cost) : "Free"}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-
-            {stops.length ? (
+                    {/* Description */}
+                    {stop.city.description && (
+                      <p className="mt-3 text-xs text-gray-300 line-clamp-2">
+                        {stop.city.description}
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-white/20 bg-slate-950/40 p-12 text-center">
+              <Compass className="mx-auto size-12 text-sky-400/60" />
+              <h3 className="mt-4 text-base font-bold text-white">
+                No custom stops configured yet for {activeTrip?.name || "this trip"}
+              </h3>
+              <p className="mt-2 text-xs sm:text-sm text-gray-400 max-w-md mx-auto">
+                Use the Cities & Route Builder to search cities across the world, add intermediate stops, and save your journey sequence.
+              </p>
               <Link
-                to="/itinerary"
-                className="gradient-sunset inline-flex rounded-full px-6 py-3 text-sm font-bold uppercase tracking-[0.15em] text-primary-foreground shadow-lift"
+                to="/cities"
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:bg-sky-400"
               >
-                View itinerary
+                <PlusCircle className="size-4" />
+                Add Destinations in Cities
               </Link>
-            ) : null}
-          </section>
+            </div>
+          )}
         </div>
       </main>
     </div>

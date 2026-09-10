@@ -41,3 +41,17 @@ export function tripDays(trip: TripListItem) {
   const end = new Date(`${trip.end_date}T00:00:00`).getTime();
   return Math.max(1, Math.round((end - start) / 86_400_000) + 1);
 }
+
+const ACTIVE_TRIP_KEY = "globetrotter.activeTripId";
+
+export function getActiveTripId(): number | null {
+  if (!isBrowser()) return null;
+  const raw = window.localStorage.getItem(ACTIVE_TRIP_KEY);
+  return raw ? Number(raw) : null;
+}
+
+export function setActiveTripId(id: number) {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(ACTIVE_TRIP_KEY, String(id));
+}
+
