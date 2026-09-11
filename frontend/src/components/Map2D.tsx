@@ -22,6 +22,7 @@ import type { StoredStop } from '@/lib/itineraryStore';
 import { cityCoords } from '@/data/cityCoords';
 import majorCitiesData from '@/data/majorCities.json';
 import { getDrivingRoute, type RouteResult } from '@/lib/routingService';
+import { getCityFallbackImage } from '@/lib/cityImageHelper';
 import './3d-map.css';
 import './2d-map.css';
 
@@ -292,7 +293,7 @@ export function Map2D({ stops, tripName, tripDates, onSwitchTo3D, isActive = tru
     const L = window.L;
     if (!L) return undefined;
     const cls = role === 'origin' ? 'origin' : role === 'dest' ? 'dest' : 'landmark';
-    const symbol = role === 'origin' ? 'A' : role === 'dest' ? 'B' : label || '📍';
+    const symbol = role === 'origin' ? '🟢' : role === 'dest' ? '🔴' : label || '📍';
 
     return L.divIcon({
       className: '',
@@ -313,13 +314,13 @@ export function Map2D({ stops, tripName, tripDates, onSwitchTo3D, isActive = tru
     const badgeClass = role === 'origin' ? 'origin' : role === 'dest' ? 'dest' : 'regular';
     const badgeText =
       role === 'origin'
-        ? 'ORIGIN'
+        ? '🟢 ORIGIN (HOME CITY)'
         : role === 'dest'
-        ? 'DESTINATION'
+        ? '🔴 DESTINATION'
         : (city.region || 'LANDMARK').toUpperCase();
     const imgUrl =
       city.image ||
-      'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&auto=format&fit=crop&q=80';
+      getCityFallbackImage(city.name, city.country);
 
     return `
       <div>

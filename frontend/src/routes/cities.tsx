@@ -210,6 +210,8 @@ function CitySearchInput({
   );
 }
 
+import { getCityFallbackImage } from "@/lib/cityImageHelper";
+
 function SelectedCityCard({
   title,
   badgeText,
@@ -227,25 +229,40 @@ function SelectedCityCard({
   onAddToTrip?: () => void;
   isAdded?: boolean;
 }) {
+  const [coverImg, setCoverImg] = useState<string>(() => {
+    return city.image_url && city.image_url.trim().length > 0
+      ? city.image_url
+      : getCityFallbackImage(city.name, city.country);
+  });
+
+  useEffect(() => {
+    if (city.image_url && city.image_url.trim().length > 0) {
+      setCoverImg(city.image_url);
+    } else {
+      const fallback = getCityFallbackImage(city.name, city.country);
+      setCoverImg(fallback);
+      getCityDetails(city.name, city.country, city.state ?? undefined, city.id)
+        .then((res) => {
+          if (res.data?.image_url && res.data.image_url.trim().length > 0) {
+            setCoverImg(res.data.image_url);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [city.id, city.name, city.country, city.state, city.image_url]);
+
   return (
     <article className="overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-2xl backdrop-blur-xl transition-all duration-300">
       {/* City cover photo */}
       <div className="relative h-52 w-full overflow-hidden bg-secondary/40">
-        {city.image_url ? (
-          <img
-            src={city.image_url}
-            alt={city.name}
-            className="h-full w-full object-cover transition-transform duration-700 hover:scale-105"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src =
-                "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80";
-            }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-950/40 via-blue-950/30 to-background/50">
-            <Compass className="size-12 text-primary/40" />
-          </div>
-        )}
+        <img
+          src={coverImg}
+          alt={city.name}
+          className="h-full w-full object-cover transition-transform duration-700 hover:scale-105"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = getCityFallbackImage(city.name, city.country);
+          }}
+        />
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
 
@@ -904,7 +921,7 @@ function CitiesPage() {
         state: c.region,
         latitude: c.latitude,
         longitude: c.longitude,
-        image_url: c.image_url,
+        image_url: c.image_url || getCityFallbackImage(c.name, c.country),
         description: c.description,
         cost_index: c.cost_index,
         popularity: c.popularity,
@@ -924,7 +941,7 @@ function CitiesPage() {
         state: c.region,
         latitude: c.latitude,
         longitude: c.longitude,
-        image_url: c.image_url,
+        image_url: c.image_url || getCityFallbackImage(c.name, c.country),
         description: c.description,
         cost_index: c.cost_index,
         popularity: c.popularity,
@@ -1116,7 +1133,7 @@ function CitiesPage() {
                       />
                     ) : (
                       <SelectedCityCard
-                        badgeText="Home City (Departure)"
+                        badgeText="🟢 Home City (Departure)"
                         badgeColor="border border-emerald-500/40 bg-emerald-950/60 text-emerald-300"
                         city={startCity}
                         onRemove={() => setStartCity(null)}
@@ -1221,7 +1238,7 @@ function CitiesPage() {
                       />
                     ) : (
                       <SelectedCityCard
-                        badgeText="Final Destination"
+                        badgeText="🔴 Final Destination"
                         badgeColor="border border-rose-500/40 bg-rose-950/60 text-rose-300"
                         city={stopCity}
                         onRemove={() => setStopCity(null)}
@@ -1339,7 +1356,7 @@ function CitiesPage() {
                     <div className="mt-3">
                       {currentGoingFinalCity ? (
                         <SelectedCityCard
-                          badgeText="Return Origin (From)"
+                          badgeText="🔴 Return Origin (Final Destination)"
                           badgeColor="border border-rose-500/40 bg-rose-950/60 text-rose-300"
                           city={currentGoingFinalCity}
                         />
@@ -1399,7 +1416,7 @@ function CitiesPage() {
                     <div className="mt-3">
                       {currentGoingStartCity ? (
                         <SelectedCityCard
-                          badgeText="Return Destination (Home City)"
+                          badgeText="🟢 Return Destination (Home City)"
                           badgeColor="border border-emerald-500/40 bg-emerald-950/60 text-emerald-300"
                           city={currentGoingStartCity}
                         />

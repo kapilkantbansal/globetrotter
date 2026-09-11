@@ -20,6 +20,7 @@ import countriesData from "@/data/countries.json";
 import majorCitiesData from "@/data/majorCities.json";
 import countryPolygonsData from "@/data/countries-boundaries.json";
 import countryCentroids from "@/data/countryCentroids.json";
+import { getCityFallbackImage } from "@/lib/cityImageHelper";
 import "./3d-map.css";
 
 declare global {
@@ -597,6 +598,7 @@ export function GlobeMap({ stops, tripName, tripDates, onSwitchTo2D, isActive = 
 
         const imageUrl =
           (stop.city as any)?.image_url ||
+          getCityFallbackImage(stop.city.name, stop.city.country) ||
           getCityPresetImage(stop.city.name);
 
         return {
@@ -767,9 +769,9 @@ export function GlobeMap({ stops, tripName, tripDates, onSwitchTo2D, isActive = 
             <span class="pin-city-text">${d.name}</span>
             <span class="pin-state-text" style="color:${color};">${
               d.isOrigin
-                ? "Origin"
+                ? "🟢 Origin"
                 : d.isDest
-                ? "Destination"
+                ? "🔴 Destination"
                 : `Stop #${d.order}`
             }</span>
           </div>
@@ -1314,9 +1316,9 @@ export function GlobeMap({ stops, tripName, tripDates, onSwitchTo2D, isActive = 
               }}
             >
               {hoveredLandmark?.isOrigin
-                ? "Origin"
+                ? "🟢 Origin (Home City)"
                 : hoveredLandmark?.isDest
-                ? "Destination"
+                ? "🔴 Final Destination"
                 : `Stop #${hoveredLandmark?.order}`}
             </span>
           </div>

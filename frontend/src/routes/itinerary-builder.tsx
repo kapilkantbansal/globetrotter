@@ -56,9 +56,11 @@ import { USE_FAKE_DATA } from "@/config";
 import {
   loadStops,
   loadReturnJourney,
+  saveReturnJourney,
   type StoredStop,
   type ReturnJourneyConfig,
 } from "@/lib/itineraryStore";
+import { getCityFallbackImage, getCitiesDistanceKm } from "@/lib/cityImageHelper";
 import type { TripListItem } from "@/api/types";
 import {
   CalendarDays,
@@ -190,6 +192,33 @@ function BuilderPage() {
   const displayedStops = isReturnActive ? returnStops : stops;
 
   const activeTrip = trips.find((t) => t.id === tripId) ?? null;
+
+  const totalGoingDistanceKm = useMemo(() => {
+    if (stops.length < 2) return 0;
+    let sum = 0;
+    for (let i = 0; i < stops.length - 1; i++) {
+      sum += getCitiesDistanceKm(stops[i].city, stops[i + 1].city);
+    }
+    return sum;
+  }, [stops]);
+
+  const returnDirectDistKm = useMemo(() => {
+    if (returnStops.length < 2) return 0;
+    return getCitiesDistanceKm(returnStops[0].city, returnStops[1].city);
+  }, [returnStops]);
+
+  function handleToggleReturnJourney(enabled: boolean) {
+    if (tripId == null) return;
+    const updated: ReturnJourneyConfig = {
+      ...returnJourney,
+      enabled,
+    };
+    setReturnJourney(updated);
+    saveReturnJourney(tripId, updated);
+    if (!enabled && journeyLegTab === "return") {
+      setJourneyLegTab("going");
+    }
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#020617] text-white">
@@ -354,195 +383,357 @@ function BuilderPage() {
         </div>
 
         {/* Page Scroll Section Below the Map */}
-        <div className="mt-12 space-y-8">
-          {/* Section Header */}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-                {isReturnActive ? (
-                  <>
-                    <RotateCcw className="size-5 text-indigo-400" />
-                    <span>Return Journey Route (Single Direct Segment)</span>
-                  </>
-                ) : (
-                  <>
-                    <Navigation className="size-5 text-sky-400" />
-                    <span>Journey Itinerary & Destination Sequence</span>
-                  </>
+        <div className="mt-12 space-y-12">
+          {/* 1. Going Journey Route Section */}
+          <section className="space-y-6">
+            {/* Section Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
+                  <Navigation className="size-5 text-sky-400" />
+                  <span>Going Journey Route</span>
+                  {stops.length > 0 && (
+                    <span className="ml-1 rounded-full border border-sky-500/40 bg-sky-500/15 px-3 py-0.5 text-xs font-bold text-sky-300">
+                      {stops.length} {stops.length === 1 ? "City" : "Cities"}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-1 text-xs sm:text-sm text-gray-400">
+                  Sequential transit sequence from your Home City (Departure) 🟢 to your Final Destination 🔴 with intermediate stops.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {totalGoingDistanceKm > 0 && (
+                  <div className="flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-950/70 px-4 py-2 text-xs font-bold text-sky-300 shadow-lg">
+                    <span className="text-gray-300 font-medium">Total Going Distance:</span>
+                    <span className="text-white font-extrabold text-sm">~{totalGoingDistanceKm.toLocaleString()} km</span>
+                  </div>
                 )}
-              </h2>
-              <p className="mt-1 text-xs sm:text-sm text-gray-400">
-                {isReturnActive
-                  ? "Single direct non-stop return transit from your Final Destination back to your Origin City (0 intermediate stops)."
-                  : "Explore each planned waypoint, departure city, and final destination in chronological order."}
-              </p>
-            </div>
-            <Link
-              to="/cities"
-              className="inline-flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-xs font-bold text-sky-400 transition hover:bg-sky-500/25"
-            >
-              <PlusCircle className="size-4" />
-              <span>Customize in Cities Route Builder</span>
-            </Link>
-          </div>
-
-          {/* Stops Sequence Grid / Return Leg Card */}
-          {isReturnActive ? (
-            <div className="space-y-6">
-              <div className="rounded-3xl border border-indigo-500/40 bg-gradient-to-r from-indigo-950/40 via-slate-950/70 to-indigo-950/20 p-6 shadow-xl backdrop-blur-xl">
-                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-indigo-500/20 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                      <RotateCcw className="size-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-white">Direct Non-Stop Return Leg</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {returnStops[0]?.city.name} → {returnStops[1]?.city.name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-indigo-500/40 bg-indigo-950/80 px-4 py-1.5 text-xs font-bold text-indigo-300">
-                    <span>Direct Non-Stop Return</span>
-                    <span>·</span>
-                    <span className="text-indigo-400/90 font-medium">Excluded from destination count</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-6 sm:grid-cols-2">
-                  {/* Point 1: Return Origin (Final Destination) */}
-                  <article className="rounded-2xl border border-rose-500/30 bg-slate-900/60 p-5 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="rounded-full border border-rose-500/40 bg-rose-950/60 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-rose-300">
-                        From: Return Origin (Final Destination)
-                      </span>
-                      <span className="text-xs font-bold text-gray-400">Fixed Point 1</span>
-                    </div>
-                    <div className="mt-4">
-                      <h4 className="text-xl font-bold text-white">{returnStops[0]?.city.name}</h4>
-                      <p className="text-xs text-gray-400">
-                        {returnStops[0]?.city.region ? `${returnStops[0].city.region}, ` : ""}
-                        {returnStops[0]?.city.country}
-                      </p>
-                    </div>
-                    {returnStops[0]?.city.description && (
-                      <p className="mt-3 text-xs text-gray-300 leading-relaxed">
-                        {returnStops[0].city.description}
-                      </p>
-                    )}
-                  </article>
-
-                  {/* Point 2: Return Destination (Home City) */}
-                  <article className="rounded-2xl border border-emerald-500/30 bg-slate-900/60 p-5 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
-                        To: Return Arrival (Home City (Departure))
-                      </span>
-                      <span className="text-xs font-bold text-gray-400">Fixed Point 2</span>
-                    </div>
-                    <div className="mt-4">
-                      <h4 className="text-xl font-bold text-white">{returnStops[1]?.city.name}</h4>
-                      <p className="text-xs text-gray-400">
-                        {returnStops[1]?.city.region ? `${returnStops[1].city.region}, ` : ""}
-                        {returnStops[1]?.city.country}
-                      </p>
-                    </div>
-                    {returnStops[1]?.city.description && (
-                      <p className="mt-3 text-xs text-gray-300 leading-relaxed">
-                        {returnStops[1].city.description}
-                      </p>
-                    )}
-                  </article>
-                </div>
+                <Link
+                  to="/cities"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-xs font-bold text-sky-400 transition hover:bg-sky-500/25 shadow-md"
+                >
+                  <PlusCircle className="size-4" />
+                  <span>Customize in Cities</span>
+                </Link>
               </div>
             </div>
-          ) : stops.length > 0 ? (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {stops.map((stop, idx) => {
-                const isOrigin = idx === 0;
-                const isDest = idx === stops.length - 1 && stops.length > 1;
-                const badgeColor = isOrigin
-                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                  : isDest
-                  ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
-                  : "bg-sky-500/20 text-sky-400 border-sky-500/30";
-                const roleText = isOrigin
-                  ? "Home City (Departure)"
-                  : isDest
-                  ? "Final Destination"
-                  : `Intermediate Stop #${idx}`;
 
-                return (
-                  <article
-                    key={stop.id || `stop-${idx}`}
-                    className="group relative overflow-hidden rounded-3xl border border-white/15 bg-slate-950/70 p-5 shadow-xl backdrop-blur-xl transition hover:border-sky-500/40"
+            {/* Sequence Flow with Arrows and Distances */}
+            {stops.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-white/20 bg-slate-950/40 p-12 text-center">
+                <Compass className="mx-auto size-12 text-sky-400/60" />
+                <h3 className="mt-4 text-base font-bold text-white">
+                  No custom stops configured yet for {activeTrip?.name || "this trip"}
+                </h3>
+                <p className="mt-2 text-xs sm:text-sm text-gray-400 max-w-md mx-auto">
+                  Use the Cities & Route Builder to search cities across the world, add intermediate stops, and save your journey sequence.
+                </p>
+                <Link
+                  to="/cities"
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:bg-sky-400"
+                >
+                  <PlusCircle className="size-4" />
+                  Add Destinations in Cities
+                </Link>
+              </div>
+            ) : (
+              <div className="flex flex-col lg:flex-row flex-wrap items-center justify-start gap-4 sm:gap-3 overflow-x-auto pb-4 pt-2">
+                {stops.map((stop, idx) => {
+                  const isOrigin = idx === 0;
+                  const isDest = idx === stops.length - 1 && stops.length > 1;
+                  const roleText = isOrigin
+                    ? "Home City (Departure)"
+                    : isDest
+                    ? "Final Destination"
+                    : `Stop #${idx}`;
+                  const symbol: "🟢" | "🔴" | "📍" = isOrigin ? "🟢" : isDest ? "🔴" : "📍";
+                  const badgeClass = isOrigin
+                    ? "border-emerald-500/40 bg-emerald-950/80 text-emerald-300"
+                    : isDest
+                    ? "border-rose-500/40 bg-rose-950/80 text-rose-300"
+                    : "border-sky-500/40 bg-sky-950/80 text-sky-300";
+                  const borderClass = isOrigin
+                    ? "border-emerald-500/40"
+                    : isDest
+                    ? "border-rose-500/40"
+                    : "border-sky-500/30";
+
+                  return (
+                    <div
+                      key={stop.id || `stop-${idx}`}
+                      className="flex flex-col lg:flex-row items-center gap-4 sm:gap-3 w-full lg:w-auto"
+                    >
+                      <BuilderCityCard
+                        city={stop.city}
+                        role={roleText}
+                        symbol={symbol}
+                        badgeClass={badgeClass}
+                        borderClass={borderClass}
+                        dates={{ start: stop.start_date, end: stop.end_date }}
+                        stepLabel={
+                          isOrigin
+                            ? "Departure"
+                            : isDest
+                            ? "Final Dest"
+                            : `Waypoint #${idx}`
+                        }
+                      />
+                      {idx < stops.length - 1 && (
+                        <RouteLegArrow
+                          fromCity={stop.city}
+                          toCity={stops[idx + 1].city}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* 2. Return Journey Route Section */}
+          <section className="space-y-6">
+            {/* Section Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-indigo-500/20 pb-4">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
+                  <RotateCcw className="size-5 text-indigo-400" />
+                  <span>Return Journey Route</span>
+                  <span
+                    className={`ml-1 rounded-full border px-3 py-0.5 text-xs font-bold ${
+                      returnJourney.enabled
+                        ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
+                        : "border-gray-600/40 bg-gray-600/15 text-gray-400"
+                    }`}
                   >
-                    {/* Header with badge */}
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${badgeColor}`}
-                      >
-                        {roleText}
-                      </span>
-                      <span className="text-xs font-bold text-gray-400">
-                        {isOrigin ? "Departure" : `Destination ${idx} of ${Math.max(1, stops.length - 1)}`}
-                      </span>
-                    </div>
+                    {returnJourney.enabled ? "Enabled (Direct Segment)" : "Disabled"}
+                  </span>
+                </h2>
+                <p className="mt-1 text-xs sm:text-sm text-gray-400">
+                  Single direct non-stop return transit from your Final Destination 🔴 back to your Home City (Departure) 🟢.
+                </p>
+              </div>
 
-                    {/* City Info */}
-                    <div className="mt-4">
-                      <h3 className="text-lg font-bold text-white group-hover:text-sky-400 transition">
-                        {stop.city.name}
-                      </h3>
-                      <p className="text-xs text-gray-400">
-                        {stop.city.region
-                          ? `${stop.city.region}, ${stop.city.country}`
-                          : stop.city.country}
-                      </p>
-                    </div>
-
-                    {/* Coordinates & Dates */}
-                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-gray-400">
-                      {stop.city.latitude && stop.city.longitude ? (
-                        <span className="rounded-xl bg-white/5 px-2.5 py-1">
-                          📍 {Number(stop.city.latitude).toFixed(2)}°, {Number(stop.city.longitude).toFixed(2)}°
-                        </span>
-                      ) : null}
-                      <span className="rounded-xl bg-white/5 px-2.5 py-1">
-                        🗓️ {stop.start_date} → {stop.end_date}
-                      </span>
-                    </div>
-
-                    {/* Description */}
-                    {stop.city.description && (
-                      <p className="mt-3 text-xs text-gray-300 line-clamp-2">
-                        {stop.city.description}
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-dashed border-white/20 bg-slate-950/40 p-12 text-center">
-              <Compass className="mx-auto size-12 text-sky-400/60" />
-              <h3 className="mt-4 text-base font-bold text-white">
-                No custom stops configured yet for {activeTrip?.name || "this trip"}
-              </h3>
-              <p className="mt-2 text-xs sm:text-sm text-gray-400 max-w-md mx-auto">
-                Use the Cities & Route Builder to search cities across the world, add intermediate stops, and save your journey sequence.
-              </p>
-              <Link
-                to="/cities"
-                className="mt-6 inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:bg-sky-400"
+              {/* Action: Toggle Return Journey State */}
+              <button
+                type="button"
+                onClick={() => handleToggleReturnJourney(!returnJourney.enabled)}
+                className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-xs font-bold transition shadow-md ${
+                  returnJourney.enabled
+                    ? "border-indigo-500/40 bg-indigo-600 text-white hover:bg-indigo-500"
+                    : "border-white/20 bg-white/10 text-gray-200 hover:bg-white/20 hover:text-white"
+                }`}
               >
-                <PlusCircle className="size-4" />
-                Add Destinations in Cities
-              </Link>
+                <RotateCcw className="size-4" />
+                <span>{returnJourney.enabled ? "Disable Return Journey" : "Enable Return Journey"}</span>
+              </button>
             </div>
-          )}
+
+            {/* Return Journey Details / Card */}
+            {returnJourney.enabled ? (
+              returnStops.length >= 2 ? (
+                <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/30 via-slate-950/70 to-indigo-950/20 p-6 shadow-2xl backdrop-blur-xl">
+                  <div className="flex flex-col lg:flex-row flex-wrap items-center justify-center gap-6 sm:gap-4 overflow-x-auto pb-2">
+                    {/* Return Origin Card (Final Destination) */}
+                    <BuilderCityCard
+                      city={returnStops[0].city}
+                      role="Return Origin (Final Destination)"
+                      symbol="🔴"
+                      badgeClass="border-rose-500/40 bg-rose-950/80 text-rose-300"
+                      borderClass="border-rose-500/40"
+                      stepLabel="Return Departure"
+                    />
+
+                    {/* Arrow with distance between Return Origin and Return Arrival */}
+                    <RouteLegArrow
+                      fromCity={returnStops[0].city}
+                      toCity={returnStops[1].city}
+                      label="Direct Non-Stop Return"
+                    />
+
+                    {/* Return Destination Card (Home City Departure) */}
+                    <BuilderCityCard
+                      city={returnStops[1].city}
+                      role="Return Destination (Home City)"
+                      symbol="🟢"
+                      badgeClass="border-emerald-500/40 bg-emerald-950/80 text-emerald-300"
+                      borderClass="border-emerald-500/40"
+                      stepLabel="Return Arrival"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-indigo-500/30 bg-slate-950/40 p-8 text-center text-gray-400 text-xs sm:text-sm">
+                  Please configure at least a Home City and a Final Destination in the Going journey to calculate the direct return route.
+                </div>
+              )
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+                <div className="space-y-1.5 text-center sm:text-left">
+                  <h4 className="text-sm sm:text-base font-bold text-white flex items-center justify-center sm:justify-start gap-2">
+                    <RotateCcw className="size-4 text-indigo-400" />
+                    <span>Return Journey is currently disabled</span>
+                  </h4>
+                  <p className="text-xs text-gray-400 max-w-xl">
+                    Turn on Return Journey to plot the direct return transit from your Final Destination back to your Home City, view the route distance, and display the return segment on both the 3D Globe and 2D Map.
+                  </p>
+                  {stops.length >= 2 && (
+                    <div className="flex items-center justify-center sm:justify-start gap-2 pt-1 text-xs font-semibold text-indigo-300">
+                      <span>Preview:</span>
+                      <span className="text-rose-400">🔴 {stops[stops.length - 1].city.name}</span>
+                      <span>➔</span>
+                      <span className="rounded-full bg-indigo-950 border border-indigo-500/30 px-2 py-0.5 text-[11px] text-white">
+                        ~{getCitiesDistanceKm(stops[stops.length - 1].city, stops[0].city).toLocaleString()} km
+                      </span>
+                      <span>➔</span>
+                      <span className="text-emerald-400">🟢 {stops[0].city.name}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleReturnJourney(true)}
+                  className="rounded-2xl border border-indigo-500/40 bg-indigo-600/90 hover:bg-indigo-500 px-5 py-2.5 text-xs font-bold text-white transition shadow-lg shrink-0 flex items-center gap-2"
+                >
+                  <RotateCcw className="size-4" />
+                  <span>Turn On Return Journey</span>
+                </button>
+              </div>
+            )}
+          </section>
         </div>
       </main>
+    </div>
+  );
+}
+
+{/* Subcomponent: Reusable City Card for Builder Sequence */}
+function BuilderCityCard({
+  city,
+  role,
+  symbol,
+  badgeClass,
+  borderClass,
+  dates,
+  stepLabel,
+}: {
+  city: StoredStop["city"];
+  role: string;
+  symbol: "🟢" | "🔴" | "📍";
+  badgeClass: string;
+  borderClass: string;
+  dates?: { start?: string; end?: string };
+  stepLabel?: string;
+}) {
+  const fallback = getCityFallbackImage(city.name, city.country);
+  const [imgSrc, setImgSrc] = useState(city.image_url || fallback);
+
+  useEffect(() => {
+    setImgSrc(city.image_url || getCityFallbackImage(city.name, city.country));
+  }, [city.image_url, city.name, city.country]);
+
+  return (
+    <div
+      className={`relative flex flex-col w-full sm:w-72 overflow-hidden rounded-3xl border ${borderClass} bg-slate-950/80 shadow-2xl backdrop-blur-xl transition hover:shadow-sky-500/10 hover:border-opacity-100 shrink-0`}
+    >
+      {/* City Cover Image */}
+      <div className="relative h-36 w-full overflow-hidden bg-slate-900">
+        <img
+          src={imgSrc}
+          alt={city.name}
+          onError={() => setImgSrc(fallback)}
+          className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+
+        {/* Floating Badges */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-extrabold tracking-wide backdrop-blur-md shadow-md ${badgeClass}`}
+          >
+            <span>{symbol}</span>
+            <span>{role}</span>
+          </span>
+          {stepLabel && (
+            <span className="rounded-full bg-black/60 backdrop-blur-md border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shrink-0">
+              {stepLabel}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* City Information */}
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="text-lg font-bold text-white tracking-tight">{city.name}</h3>
+        <p className="text-xs text-gray-400">
+          {city.region ? `${city.region}, ` : ""}
+          {city.country}
+        </p>
+
+        {/* Coordinates and Dates */}
+        <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-gray-400">
+          {city.latitude && city.longitude ? (
+            <span className="rounded-lg bg-white/5 border border-white/10 px-2 py-0.5">
+              📍 {Number(city.latitude).toFixed(2)}°, {Number(city.longitude).toFixed(2)}°
+            </span>
+          ) : null}
+          {dates?.start && dates?.end && (
+            <span className="rounded-lg bg-white/5 border border-white/10 px-2 py-0.5">
+              🗓️ {dates.start} → {dates.end}
+            </span>
+          )}
+        </div>
+
+        {city.description && (
+          <p className="mt-2.5 text-xs text-gray-300/90 line-clamp-2 leading-relaxed">
+            {city.description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+{/* Subcomponent: Route Leg Arrow with Calculated Distance */}
+function RouteLegArrow({
+  fromCity,
+  toCity,
+  label,
+}: {
+  fromCity: StoredStop["city"];
+  toCity: StoredStop["city"];
+  label?: string;
+}) {
+  const dist = getCitiesDistanceKm(fromCity, toCity);
+  return (
+    <div className="flex flex-col items-center justify-center my-3 lg:my-0 lg:px-2 shrink-0">
+      {/* Distance Badge on Arrow */}
+      <div className="flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-slate-900/95 px-3 py-1 shadow-lg text-sky-300 text-xs font-bold tracking-wide backdrop-blur-md">
+        <Navigation className="size-3 text-sky-400 rotate-90" />
+        <span>~{dist.toLocaleString()} km</span>
+      </div>
+
+      {/* Visual Arrow */}
+      <div className="flex items-center justify-center text-sky-400/90 my-1.5">
+        {/* Desktop: Horizontal Arrow */}
+        <div className="hidden lg:flex items-center">
+          <div className="h-0.5 w-10 md:w-14 bg-gradient-to-r from-sky-500/30 via-sky-400 to-sky-500" />
+          <ArrowRight className="size-5 -ml-1 text-sky-400 animate-pulse" />
+        </div>
+        {/* Mobile: Vertical Arrow */}
+        <div className="flex lg:hidden flex-col items-center">
+          <div className="w-0.5 h-6 bg-gradient-to-b from-sky-500/30 via-sky-400 to-sky-500" />
+          <div className="text-sky-400 font-bold text-lg leading-none">↓</div>
+        </div>
+      </div>
+
+      {label && (
+        <span className="text-[10px] text-gray-400 font-semibold tracking-wide">
+          {label}
+        </span>
+      )}
     </div>
   );
 }
