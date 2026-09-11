@@ -339,6 +339,26 @@ function BuilderPage() {
                 <span>2D Map</span>
               </button>
             </div>
+
+            {/* Cross-page Navigation Links */}
+            <div className="flex items-center gap-2">
+              <Link
+                to="/cities"
+                className="flex items-center gap-1.5 rounded-2xl border border-white/15 bg-slate-900/90 px-3 py-1.5 text-xs font-bold text-gray-300 transition hover:border-sky-400 hover:text-white shadow-md"
+                title="Open Cities & Route Builder"
+              >
+                <MapPin className="size-3.5 text-sky-400" />
+                <span>Cities</span>
+              </Link>
+              <Link
+                to="/itinerary"
+                className="flex items-center gap-1.5 rounded-2xl border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-xs font-bold text-sky-300 transition hover:bg-sky-500/25 shadow-md"
+                title="Open Detailed Daily Itinerary Plan"
+              >
+                <CalendarDays className="size-3.5" />
+                <span>Itinerary Plan</span>
+              </Link>
+            </div>
           </div>
         </div>
 

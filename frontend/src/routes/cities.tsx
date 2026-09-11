@@ -1808,19 +1808,29 @@ function CitiesPage() {
               )}
 
               {/* Action buttons */}
-              <div className="mt-5 space-y-2 border-t border-border/40 pt-4">
+              <div className="mt-5 space-y-2.5 border-t border-border/40 pt-4">
                 <Link
-                  to="/trips"
-                  className="block w-full rounded-full border border-border/70 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-gray-300 transition hover:bg-secondary hover:text-white"
+                  to="/itinerary-builder"
+                  className="gradient-sunset flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-lift transition hover:opacity-95"
                 >
-                  ← Back to My Trips
+                  <Globe2 className="size-4" />
+                  View on Map →
                 </Link>
-                <Link
-                  to="/itinerary"
-                  className="gradient-sunset block w-full rounded-full py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-lift transition hover:opacity-95"
-                >
-                  View Full Itinerary →
-                </Link>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    to="/itinerary"
+                    className="flex items-center justify-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-sky-400 transition hover:bg-sky-500/20"
+                  >
+                    <CalendarDays className="size-3.5" />
+                    Itinerary Plan
+                  </Link>
+                  <Link
+                    to="/trips"
+                    className="flex items-center justify-center rounded-full border border-border/70 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-gray-300 transition hover:bg-secondary hover:text-white"
+                  >
+                    ← My Trips
+                  </Link>
+                </div>
               </div>
             </section>
           </aside>
